@@ -38,6 +38,7 @@ public static class DependencyInjection
             .AddScoped<IDbContext>(static serviceProvider => serviceProvider.GetRequiredService<DbContext>());
 
         builder.Services.AddScoped<IUserRepository, UserRepository>();
+        builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
 
         return builder;
     }

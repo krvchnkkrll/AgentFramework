@@ -1,5 +1,6 @@
 using System.Net.Mail;
 using Domain.Common;
+using Domain.Entities.Users.Parameters;
 
 namespace Domain.Entities.Users;
 
@@ -23,15 +24,15 @@ public sealed class User : Entity
         CreatedAt = createdAt;
     }
     
-    public static User Provision(Guid id, string email, string username)
+    public static User Create(CreateUserParameter parameter)
     {
-        return new User(id, NormalizeEmail(email), NormalizeUsername(username), DateTimeOffset.UtcNow);
+        return new User(parameter.Id, NormalizeEmail(parameter.Email), NormalizeUsername(parameter.Username), DateTimeOffset.UtcNow);
     }
 
-    public void SyncProfile(string email, string username)
+    public void SyncProfile(SyncProfileParameter parameter)
     {
-        Email = NormalizeEmail(email);
-        Username = NormalizeUsername(username);
+        Email = NormalizeEmail(parameter.Email);
+        Username = NormalizeUsername(parameter.Username);
     }
 
     public void RecordSignIn() => LastSeenAt = DateTimeOffset.UtcNow;

@@ -16,7 +16,9 @@ npm --prefix frontend run dev
 ```
 
 Откроется на <http://localhost:5173>. По умолчанию (`.env.development`) авторизация
-выключена и данные берутся из мок-слоя — бэкенд и Keycloak запускать не нужно.
+выключена (Keycloak запускать не нужно), а чаты уже ходят в реальный бэкенд —
+для них нужен запущенный Web-проект и Postgres. Чтобы вернуться на моки без бэкенда,
+поставь `VITE_USE_MOCKS=true` в `.env.development.local`.
 
 Другие команды:
 
@@ -32,7 +34,11 @@ npm --prefix frontend run typecheck
 
 ## Два переключателя, которые определяют режим работы
 
-Оба живут в `.env.development` (общие значения) и `.env.local` (личные, в git не попадают).
+Оба живут в `.env.development` (общие значения). Личное переопределение — в
+`.env.development.local` (в git не попадает). Обычный `.env.local` тут не сработает:
+у Vite `.env.${mode}` перекрывает `.env.local`, а не наоборот (порядок загрузки —
+`.env` → `.env.local` → `.env.development` → `.env.development.local`, каждый следующий
+файл побеждает).
 
 | Переменная | `true` | `false` |
 | --- | --- | --- |
@@ -51,9 +57,11 @@ npm --prefix frontend run typecheck
 Если бэкенд не запущен, приложение не падает: профиль подставляется из токена,
 а в меню пользователя загорается бейдж «бэкенд недоступен».
 
-CORS настраивать не нужно: vite проксирует `/api` на `http://localhost:5175`
-(профиль `http` из `launchSettings.json`), поэтому для браузера фронт и бэк — один origin.
-Адрес меняется переменной `VITE_API_PROXY_TARGET`.
+CORS настраивать не нужно: vite проксирует `/api` на `https://localhost:7128`
+(профиль `https` из `launchSettings.json` — `http`-профиля в проекте больше нет),
+поэтому для браузера фронт и бэк — один origin. Адрес меняется переменной
+`VITE_API_PROXY_TARGET`; самоподписанный сертификат dev-профиля прокси игнорирует
+(`secure: false` в `vite.config.ts`).
 
 ---
 
@@ -81,7 +89,7 @@ GET    /api/agents
 Обе реализации подчиняются одному интерфейсу `ChatsApi`
 ([src/api/contract.ts](src/api/contract.ts)), а выбор делается в
 [src/api/index.ts](src/api/index.ts). Поэтому переход на реальный бэкенд —
-это один флаг в `.env.local`, компоненты и стор трогать не нужно.
+это один флаг в `.env.development.local`, компоненты и стор трогать не нужно.
 
 Если на бэкенде получится другая форма ответа — правь `chats.real.ts` и `types.ts`,
 TypeScript сам покажет все места, которые надо поправить.
@@ -100,8 +108,13 @@ TypeScript сам покажет все места, которые надо по
 
 ## Настройка Keycloak
 
-Клиента для SPA в realm `workspace` пока нет. Нужно завести — в админке Keycloak,
-**Clients → Create client**:
+Realm называется `Workspace` (с большой буквы — Keycloak чувствителен к регистру
+в пути `/realms/...`, `workspace` в нижнем регистре даёт `Realm does not exist`).
+Keycloak на `192.168.0.14:8080` слушает обычный **HTTP**, не HTTPS.
+
+Клиента для SPA в этом realm пока нет (`/protocol/openid-connect/auth` с
+`client_id=agentframework-web` отвечает `Client not found`). Нужно завести —
+в админке Keycloak, **Clients → Create client**:
 
 | Шаг | Поле | Значение |
 | --- | --- | --- |
@@ -140,14 +153,15 @@ Add mapper → By configuration → Audience**:
 Когда клиент готов:
 
 ```bash
-echo "VITE_AUTH_DISABLED=false" >> frontend/.env.local
+echo "VITE_AUTH_DISABLED=false" >> frontend/.env.development.local
 ```
 
-### Самоподписанный сертификат Keycloak
+### Если Keycloak всё же окажется на HTTPS с самоподписанным сертификатом
 
-`Authority` в `appsettings.json` — `https://192.168.0.14:8080`. Если сертификат
-самоподписанный, браузер сначала должен ему доверять: открой этот адрес в отдельной
-вкладке и прими исключение, иначе редирект на логин будет молча падать.
+Тогда браузер должен сначала ему доверять: открой адрес Keycloak в отдельной
+вкладке и прими исключение, иначе редирект на логин будет молча падать. На бэкенде
+`Sso/DependencyInjection.cs` сам решает, требовать ли HTTPS для метаданных — смотрит
+на схему `Keycloak:Authority` в `appsettings.json`, дополнительно ничего включать не надо.
 
 ---
 

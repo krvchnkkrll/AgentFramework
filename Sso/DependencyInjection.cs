@@ -30,7 +30,11 @@ public static class DependencyInjection
             {
                 options.Authority = keycloakOptions.Authority;
                 options.Audience = keycloakOptions.Audience;
-                options.RequireHttpsMetadata = true;
+
+                // Local/dev Keycloak often runs plain HTTP; only demand HTTPS metadata
+                // when the configured authority actually is HTTPS (i.e. in real environments).
+                options.RequireHttpsMetadata =
+                    keycloakOptions.Authority.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
                 options.MapInboundClaims = false;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {

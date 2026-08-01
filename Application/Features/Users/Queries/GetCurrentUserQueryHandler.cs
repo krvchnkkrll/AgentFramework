@@ -2,6 +2,7 @@ using Application.Contracts.Features.Users.Queries;
 using Application.Contracts.Features.Users.Responses;
 using Domain.Common;
 using Domain.Entities.Users;
+using Domain.Entities.Users.Parameters;
 using MediatR;
 using Persistence.Contracts.Repositories;
 using Persistence.Contracts.Services;
@@ -30,12 +31,12 @@ file sealed class GetCurrentUserQueryHandler(
         var user = await userRepository.GetByIdAsync(userId, cancellationToken);
         if (user is null)
         {
-            user = User.Provision(userId, email, username);
+            user = User.Create(new CreateUserParameter { Id = userId, Email = email, Username = username });
             await userRepository.AddAsync(user, cancellationToken);
         }
         else
         {
-            user.SyncProfile(email, username);
+            user.SyncProfile(new SyncProfileParameter { Email = email, Username = username });
         }
 
         user.RecordSignIn();

@@ -1,46 +1,159 @@
 /**
  * Реальная реализация ChatsApi.
  *
- * Эндпоинтов пока нет — они появятся, когда ты допишешь бэкенд.
- * Здесь зафиксирована форма, на которую рассчитывает фронт;
- * если на бэкенде получится иначе — правь этот файл, компоненты трогать не придётся.
+ * Бэкенд реализует чаты и сообщения (см. Web/Controllers/ConversationController.cs),
+ * но в другой форме, чем изначально предполагалось здесь: список без lastMessagePreview,
+ * PATCH только для title (pin/unpin — отдельные POST-эндпоинты), MessageResponse
+ * с полями roleEnum/text вместо role/content, без ассистента/вложений/агентов.
+ * Вся эта разница транслируется тут — контракт ChatsApi и компоненты не меняются.
  *
- * Ожидаемые маршруты:
+ * Реализованные маршруты:
  *   GET    /api/chats
- *   POST   /api/chats                                  { title?, agentId? }
- *   PATCH  /api/chats/{chatId}                         { title?, pinned?, agentId? }
+ *   POST   /api/chats                      { title }
+ *   PATCH  /api/chats/{chatId}             { title }
+ *   POST   /api/chats/{chatId}/pin
+ *   POST   /api/chats/{chatId}/unpin
  *   DELETE /api/chats/{chatId}
  *   GET    /api/chats/{chatId}/messages
- *   POST   /api/chats/{chatId}/messages                { content, attachmentIds }
- *   GET    /api/chats/{chatId}/messages/{id}/stream    text/event-stream
- *   POST   /api/attachments                            multipart/form-data, поле "file"
- *   DELETE /api/attachments/{attachmentId}
- *   GET    /api/agents
+ *   POST   /api/chats/{chatId}/messages    { text }
+ *
+ * Ещё не реализованы на бэкенде (см. описания у методов ниже, деградируют мягко
+ * через ApiError.isNotImplemented): ответ ассистента и его стриминг, вложения, агенты.
  */
 import type { ChatsApi, DeltaHandler, SendMessageResult } from './contract';
-import { rawRequest, request } from './http';
+import { ApiError, request } from './http';
 import type {
   AgentResponse,
   AttachmentResponse,
   ChatResponse,
   CreateChatRequest,
   MessageResponse,
+  MessageRole,
   SendMessageRequest,
-  StreamChunk,
   UpdateChatRequest,
 } from './types';
 
+/** Форма ответа Application.Contracts/Features/Chats/Responses/ChatSummaryResponse.cs. */
+interface BackendChatSummaryResponse {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  isPinned: boolean;
+}
+
+/** Форма ответа .../Responses/ChatResponse.cs — та же чат-запись, но с сообщениями. */
+interface BackendChatResponse extends BackendChatSummaryResponse {
+  messages: BackendMessageResponse[];
+}
+
+/** Форма ответа .../Responses/MessageResponse.cs (roleEnum — строка, JsonStringEnumConverter). */
+interface BackendMessageResponse {
+  id: string;
+  roleEnum: 'System' | 'User' | 'Assistant' | 'Tool';
+  text: string;
+  createdAt: string;
+}
+
+function mapRole(roleEnum: BackendMessageResponse['roleEnum']): MessageRole {
+  switch (roleEnum) {
+    case 'User':
+      return 'user';
+    case 'System':
+      return 'system';
+    case 'Assistant':
+    case 'Tool':
+      // Фронт не различает assistant/tool отдельным пузырём.
+      return 'assistant';
+  }
+}
+
+function mapMessage(message: BackendMessageResponse, chatId: string): MessageResponse {
+  return {
+    id: message.id,
+    chatId,
+    role: mapRole(message.roleEnum),
+    content: message.text,
+    createdAt: message.createdAt,
+    status: 'complete',
+    attachments: [],
+  };
+}
+
+function previewOf(messages: BackendMessageResponse[]): string | null {
+  const last = messages.at(-1);
+  if (!last) return null;
+  return last.text.replace(/\s+/g, ' ').trim().slice(0, 90);
+}
+
+function mapChatSummary(chat: BackendChatSummaryResponse): ChatResponse {
+  return {
+    id: chat.id,
+    title: chat.title,
+    createdAt: chat.createdAt,
+    updatedAt: chat.updatedAt,
+    // Список отдаёт GET /api/chats без сообщений — превью пока взять неоткуда.
+    lastMessagePreview: null,
+    pinned: chat.isPinned,
+    agentId: null,
+  };
+}
+
+function mapChat(chat: BackendChatResponse): ChatResponse {
+  return {
+    id: chat.id,
+    title: chat.title,
+    createdAt: chat.createdAt,
+    updatedAt: chat.updatedAt,
+    lastMessagePreview: previewOf(chat.messages),
+    pinned: chat.isPinned,
+    agentId: null,
+  };
+}
+
+const NOT_IMPLEMENTED = (feature: string) =>
+  new ApiError(501, `${feature} ещё не реализовано на бэкенде.`, 'NotImplemented');
+
 export const realChatsApi: ChatsApi = {
   listChats(signal) {
-    return request<ChatResponse[]>('/api/chats', { signal });
+    return request<BackendChatSummaryResponse[]>('/api/chats', { signal }).then((chats) =>
+      chats.map(mapChatSummary),
+    );
   },
 
   createChat(body: CreateChatRequest, signal) {
-    return request<ChatResponse>('/api/chats', { method: 'POST', json: body, signal });
+    const title = body.title?.trim() || 'Новый чат';
+
+    return request<BackendChatResponse>('/api/chats', {
+      method: 'POST',
+      json: { title },
+      signal,
+    }).then(mapChat);
   },
 
-  updateChat(chatId: string, body: UpdateChatRequest, signal) {
-    return request<ChatResponse>(`/api/chats/${chatId}`, { method: 'PATCH', json: body, signal });
+  async updateChat(chatId: string, body: UpdateChatRequest, signal): Promise<ChatResponse> {
+    if (body.title !== undefined) {
+      return mapChat(
+        await request<BackendChatResponse>(`/api/chats/${chatId}`, {
+          method: 'PATCH',
+          json: { title: body.title },
+          signal,
+        }),
+      );
+    }
+
+    if (body.pinned !== undefined) {
+      const action = body.pinned ? 'pin' : 'unpin';
+      return mapChat(
+        await request<BackendChatResponse>(`/api/chats/${chatId}/${action}`, {
+          method: 'POST',
+          signal,
+        }),
+      );
+    }
+
+    // Только agentId без title/pinned — сменить агента у чата бэкенд пока не умеет.
+    throw NOT_IMPLEMENTED('Выбор агента');
   },
 
   deleteChat(chatId: string, signal) {
@@ -48,83 +161,40 @@ export const realChatsApi: ChatsApi = {
   },
 
   listMessages(chatId: string, signal) {
-    return request<MessageResponse[]>(`/api/chats/${chatId}/messages`, { signal });
-  },
-
-  sendMessage(chatId: string, body: SendMessageRequest, signal) {
-    return request<SendMessageResult>(`/api/chats/${chatId}/messages`, {
-      method: 'POST',
-      json: body,
-      signal,
-    });
-  },
-
-  async streamAssistantMessage(
-    chatId: string,
-    messageId: string,
-    onDelta: DeltaHandler,
-    signal?: AbortSignal,
-  ): Promise<MessageResponse> {
-    const response = await rawRequest(`/api/chats/${chatId}/messages/${messageId}/stream`, {
-      headers: { Accept: 'text/event-stream' },
-      signal,
-    });
-
-    if (!response.body) {
-      throw new Error('Сервер не вернул поток ответа.');
-    }
-
-    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = '';
-    let content = '';
-    let final: MessageResponse | null = null;
-
-    // Разбираем SSE вручную: EventSource не умеет слать заголовок Authorization.
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-
-      buffer += value;
-
-      let boundary = buffer.indexOf('\n\n');
-      while (boundary !== -1) {
-        const rawEvent = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
-        boundary = buffer.indexOf('\n\n');
-
-        const payload = rawEvent
-          .split('\n')
-          .filter((line) => line.startsWith('data:'))
-          .map((line) => line.slice(5).trim())
-          .join('\n');
-
-        if (!payload || payload === '[DONE]') continue;
-
-        const parsed = JSON.parse(payload) as StreamChunk | MessageResponse;
-
-        if ('delta' in parsed) {
-          content += parsed.delta;
-          onDelta(parsed.delta);
-        } else {
-          final = parsed;
-        }
-      }
-    }
-
-    return (
-      final ?? {
-        id: messageId,
-        chatId,
-        role: 'assistant',
-        content,
-        createdAt: new Date().toISOString(),
-        status: 'complete',
-        attachments: [],
-      }
+    return request<BackendMessageResponse[]>(`/api/chats/${chatId}/messages`, { signal }).then(
+      (messages) => messages.map((message) => mapMessage(message, chatId)),
     );
   },
 
-  async uploadAttachment(file: File, signal?: AbortSignal): Promise<AttachmentResponse> {
+  async sendMessage(chatId: string, body: SendMessageRequest, signal): Promise<SendMessageResult> {
+    // attachmentIds игнорируются: вложений на бэкенде ещё нет.
+    const userMessage = await request<BackendMessageResponse>(`/api/chats/${chatId}/messages`, {
+      method: 'POST',
+      json: { text: body.content },
+      signal,
+    }).then((message) => mapMessage(message, chatId));
+
+    // На бэкенде нет агента, который бы ответил, — отдаём «печатающуюся» болванку.
+    // streamAssistantMessage ниже сразу провалит её в status: 'failed' понятной ошибкой
+    // вместо того, чтобы стор вечно ждал ответа.
+    const assistantMessage: MessageResponse = {
+      id: `pending-${userMessage.id}`,
+      chatId,
+      role: 'assistant',
+      content: '',
+      createdAt: new Date().toISOString(),
+      status: 'streaming',
+      attachments: [],
+    };
+
+    return { userMessage, assistantMessage };
+  },
+
+  streamAssistantMessage(_chatId: string, _messageId: string, _onDelta: DeltaHandler): Promise<MessageResponse> {
+    return Promise.reject(NOT_IMPLEMENTED('Ответ ассистента'));
+  },
+
+  uploadAttachment(file: File, signal?: AbortSignal): Promise<AttachmentResponse> {
     const form = new FormData();
     form.append('file', file, file.name);
 
