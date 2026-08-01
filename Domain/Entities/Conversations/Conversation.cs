@@ -53,6 +53,7 @@ public sealed class Conversation : Entity
     {
         var message = Message.Create(new CreateMessageParameter
         {
+            Id = parameter.Id ?? Guid.CreateVersion7(),
             ConversationId = Id,
             RoleEnum = parameter.RoleEnum,
             Text = parameter.Text,

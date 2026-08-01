@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using Application.Contracts.Features.Chats;
+using Web.Hubs;
 
 namespace Web;
 
@@ -11,6 +13,10 @@ public static class DependencyInjection
             .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
         builder.Services.AddOpenApi();
+
+        builder.Services.AddSignalR();
+        builder.Services.AddScoped<IChatNotifier, SignalRChatNotifier>();
+
         return builder;
     }
 }

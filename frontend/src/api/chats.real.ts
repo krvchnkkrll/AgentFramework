@@ -4,8 +4,13 @@
  * Бэкенд реализует чаты и сообщения (см. Web/Controllers/ConversationController.cs),
  * но в другой форме, чем изначально предполагалось здесь: список без lastMessagePreview,
  * PATCH только для title (pin/unpin — отдельные POST-эндпоинты), MessageResponse
- * с полями roleEnum/text вместо role/content, без ассистента/вложений/агентов.
+ * с полями roleEnum/text вместо role/content, без вложений/агентов.
  * Вся эта разница транслируется тут — контракт ChatsApi и компоненты не меняются.
+ *
+ * Ответ ассистента — мок на бэкенде (Application/Features/Chats/MockAssistantResponder.cs),
+ * стримится не по HTTP/SSE, а по SignalR (см. @/realtime/chatHub): sendMessage дожидается
+ * события messageStarted, чтобы узнать id ещё не сохранённого сообщения, а
+ * streamAssistantMessage слушает messageDelta/messageCompleted для этого id.
  *
  * Реализованные маршруты:
  *   GET    /api/chats
@@ -16,9 +21,10 @@
  *   DELETE /api/chats/{chatId}
  *   GET    /api/chats/{chatId}/messages
  *   POST   /api/chats/{chatId}/messages    { text }
+ *   WS     /hubs/chat                      messageStarted/messageDelta/messageCompleted/chatRenamed
  *
  * Ещё не реализованы на бэкенде (см. описания у методов ниже, деградируют мягко
- * через ApiError.isNotImplemented): ответ ассистента и его стриминг, вложения, агенты.
+ * через ApiError.isNotImplemented): вложения, агенты.
  */
 import type { ChatsApi, DeltaHandler, SendMessageResult } from './contract';
 import { ApiError, request } from './http';
@@ -32,6 +38,8 @@ import type {
   SendMessageRequest,
   UpdateChatRequest,
 } from './types';
+import { joinChat, streamMessage, waitForMessageStarted } from '@/realtime/chatHub';
+import type { HubMessageResponse } from '@/realtime/chatHub';
 
 /** Форма ответа Application.Contracts/Features/Chats/Responses/ChatSummaryResponse.cs. */
 interface BackendChatSummaryResponse {
@@ -48,12 +56,7 @@ interface BackendChatResponse extends BackendChatSummaryResponse {
 }
 
 /** Форма ответа .../Responses/MessageResponse.cs (roleEnum — строка, JsonStringEnumConverter). */
-interface BackendMessageResponse {
-  id: string;
-  roleEnum: 'System' | 'User' | 'Assistant' | 'Tool';
-  text: string;
-  createdAt: string;
-}
+type BackendMessageResponse = HubMessageResponse;
 
 function mapRole(roleEnum: BackendMessageResponse['roleEnum']): MessageRole {
   switch (roleEnum) {
@@ -167,6 +170,11 @@ export const realChatsApi: ChatsApi = {
   },
 
   async sendMessage(chatId: string, body: SendMessageRequest, signal): Promise<SendMessageResult> {
+    // Обязательно вступаем в группу и начинаем ждать messageStarted ДО POST —
+    // бэкенд может прислать событие раньше, чем HTTP-ответ на сам POST вернётся.
+    await joinChat(chatId);
+    const startedPromise = waitForMessageStarted(chatId);
+
     // attachmentIds игнорируются: вложений на бэкенде ещё нет.
     const userMessage = await request<BackendMessageResponse>(`/api/chats/${chatId}/messages`, {
       method: 'POST',
@@ -174,11 +182,12 @@ export const realChatsApi: ChatsApi = {
       signal,
     }).then((message) => mapMessage(message, chatId));
 
-    // На бэкенде нет агента, который бы ответил, — отдаём «печатающуюся» болванку.
-    // streamAssistantMessage ниже сразу провалит её в status: 'failed' понятной ошибкой
-    // вместо того, чтобы стор вечно ждал ответа.
+    // Реальный ответ (мок на бэкенде, Application/Features/Chats/MockAssistantResponder.cs)
+    // стримится по SignalR отдельно от этого запроса — id сообщения узнаём из messageStarted.
+    const assistantMessageId = await startedPromise;
+
     const assistantMessage: MessageResponse = {
-      id: `pending-${userMessage.id}`,
+      id: assistantMessageId,
       chatId,
       role: 'assistant',
       content: '',
@@ -190,8 +199,13 @@ export const realChatsApi: ChatsApi = {
     return { userMessage, assistantMessage };
   },
 
-  streamAssistantMessage(_chatId: string, _messageId: string, _onDelta: DeltaHandler): Promise<MessageResponse> {
-    return Promise.reject(NOT_IMPLEMENTED('Ответ ассистента'));
+  streamAssistantMessage(
+    chatId: string,
+    messageId: string,
+    onDelta: DeltaHandler,
+    signal?: AbortSignal,
+  ): Promise<MessageResponse> {
+    return streamMessage(chatId, messageId, onDelta, signal).then((message) => mapMessage(message, chatId));
   },
 
   uploadAttachment(file: File, signal?: AbortSignal): Promise<AttachmentResponse> {

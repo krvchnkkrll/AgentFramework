@@ -31,11 +31,14 @@ public sealed class Message : Entity
     // message attached to a conversation that actually owns it.
     internal static Message Create(CreateMessageParameter parameter)
     {
+        if (parameter.Id == Guid.Empty)
+            throw new ArgumentException("Message id cannot be empty.", nameof(parameter));
+
         if (parameter.ConversationId == Guid.Empty)
             throw new ArgumentException("Message must belong to a conversation.", nameof(parameter));
 
         return new Message(
-            Guid.CreateVersion7(),
+            parameter.Id,
             parameter.ConversationId,
             parameter.RoleEnum,
             NormalizeText(parameter.Text),

@@ -48,6 +48,24 @@ public static class DependencyInjection
                     NameClaimType = "preferred_username",
                     RoleClaimType = ClaimTypes.Role,
                 };
+
+                // WebSocket connections can't set an Authorization header, so the
+                // SignalR JS client sends the token via query string instead — accept
+                // it there, but only for the hub path (never for regular API routes).
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        if (!string.IsNullOrEmpty(accessToken) &&
+                            context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                        {
+                            context.Token = accessToken;
+                        }
+
+                        return Task.CompletedTask;
+                    },
+                };
             });
 
         builder.Services.AddAuthorization();

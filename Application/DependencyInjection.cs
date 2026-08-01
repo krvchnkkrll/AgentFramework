@@ -1,3 +1,4 @@
+using Application.Features.Chats;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -9,6 +10,8 @@ public static class DependencyInjection
     {
         builder.Services.AddMediatR(config =>
             config.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly));
+
+        builder.Services.AddScoped<MockAssistantResponder>();
 
         return builder;
     }

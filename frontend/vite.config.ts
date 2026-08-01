@@ -18,12 +18,19 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       // Всё, что начинается с /api, проксируется на ASP.NET Core.
       // Благодаря этому браузер считает, что фронт и бэк на одном origin,
-      // и CORS на бэкенде настраивать не нужно.
+      // и CORS на бэкенде настраивать не нужно. /hubs — то же самое для
+      // SignalR (ws: true нужен, иначе proxy не апгрейдит соединение до WebSocket).
       proxy: {
         '/api': {
           target: env.VITE_API_PROXY_TARGET ?? 'http://localhost:5175',
           changeOrigin: true,
           secure: false,
+        },
+        '/hubs': {
+          target: env.VITE_API_PROXY_TARGET ?? 'http://localhost:5175',
+          changeOrigin: true,
+          secure: false,
+          ws: true,
         },
       },
     },

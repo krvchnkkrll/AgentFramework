@@ -11,7 +11,8 @@ namespace Application.Features.Chats.Commands.SendMessage;
 
 file sealed class SendMessageCommandHandler(
     ICurrentUserService currentUserService,
-    IConversationRepository conversationRepository)
+    IConversationRepository conversationRepository,
+    MockAssistantResponder assistantResponder)
     : IRequestHandler<SendMessageCommand, Result<MessageResponse>>
 {
     public async Task<Result<MessageResponse>> Handle(SendMessageCommand request, CancellationToken cancellationToken)
@@ -36,6 +37,10 @@ file sealed class SendMessageCommandHandler(
         });
 
         await conversationRepository.SaveChangesAsync(cancellationToken);
+
+        // Detached on purpose: the HTTP response carries only the user's message, the
+        // (mocked) assistant reply streams separately over SignalR.
+        assistantResponder.Start(conversation.Id, request.Body.Text);
 
         return message.ToResponse();
     }

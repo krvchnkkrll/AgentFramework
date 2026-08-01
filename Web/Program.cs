@@ -3,6 +3,7 @@ using Persistence;
 using Sso;
 using Web;
 using Web.ExceptionHandling;
+using Web.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,5 +30,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<ChatHub>("/hubs/chat");
 
 app.Run();

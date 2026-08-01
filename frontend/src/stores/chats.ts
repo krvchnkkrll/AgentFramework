@@ -9,6 +9,8 @@ import { computed, ref } from 'vue';
 
 import { ApiError, chatsApi } from '@/api';
 import type { AgentResponse, AttachmentResponse, ChatResponse, MessageResponse } from '@/api';
+import { config } from '@/config';
+import { onChatRenamed } from '@/realtime/chatHub';
 import {
   bucketLabels,
   bucketOf,
@@ -114,6 +116,15 @@ export const useChatsStore = defineStore('chats', () => {
 
   async function init(): Promise<void> {
     await Promise.all([loadChats(), loadAgents()]);
+
+    // Мок-ассистент на бэкенде может переименовать чат по первому сообщению —
+    // это приходит пушем по SignalR, а не как ответ на какой-то наш вызов.
+    if (!config.useMocks) {
+      onChatRenamed((chatId, title) => {
+        const chat = chats.value.find((c) => c.id === chatId);
+        if (chat) chat.title = title;
+      });
+    }
   }
 
   async function loadChats(): Promise<void> {
