@@ -1,0 +1,278 @@
+/*
+ * Дизайн-токены.
+ *
+ * Все цвета в приложении берутся ТОЛЬКО отсюда через var(--...).
+ * Тема переключается атрибутом data-theme на <html> — см. stores/theme.ts.
+ * Чтобы добавить новую тему: скопируй блок [data-theme='...'] и зарегистрируй её в themes.ts.
+ */
+
+:root {
+  /* Размеры и форма */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  --sidebar-width: 288px;
+  --content-max-width: 820px;
+  --header-height: 60px;
+
+  /* Типографика */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+
+  /* Анимации */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 380ms;
+
+  /* Z-index. Сайдбар выше шапки: на узком экране он выезжает поверх неё. */
+  --z-header: 30;
+  --z-sidebar: 40;
+  --z-dropdown: 60;
+  --z-modal: 80;
+  --z-toast: 100;
+}
+
+/* ─────────────────────────── MIDNIGHT (тёмная, по умолчанию) ─────────────────────────── */
+[data-theme='midnight'] {
+  color-scheme: dark;
+
+  --bg-app: #0b0d13;
+  --bg-app-gradient: radial-gradient(1200px 700px at 12% -10%, #1b2044 0%, transparent 60%),
+    radial-gradient(900px 600px at 105% 0%, #291a45 0%, transparent 55%);
+  --bg-sidebar: #0f1219;
+  --bg-surface: #12151e;
+  --bg-surface-2: #171b26;
+  --bg-elevated: #1b2030;
+  --bg-inset: #0a0c11;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.09);
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --text-primary: #e8eaf2;
+  --text-secondary: #a3a9bd;
+  --text-muted: #6e7489;
+  --text-inverted: #0b0d13;
+
+  --accent: #7c8cff;
+  --accent-hover: #929fff;
+  --accent-soft: rgba(124, 140, 255, 0.14);
+  --accent-contrast: #ffffff;
+  --accent-gradient: linear-gradient(135deg, #7c8cff 0%, #c96bff 100%);
+
+  --danger: #ff6b7a;
+  --danger-soft: rgba(255, 107, 122, 0.14);
+  --success: #4ade9b;
+  --warning: #f5c26b;
+
+  --bubble-user: linear-gradient(135deg, #6f7fff 0%, #9d6bff 100%);
+  --bubble-user-text: #ffffff;
+  --bubble-agent: var(--bg-surface-2);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 24px 60px -18px rgba(0, 0, 0, 0.75);
+  --shadow-accent: 0 8px 28px -10px rgba(124, 140, 255, 0.6);
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.14);
+}
+
+/* ─────────────────────────── DAYLIGHT (светлая) ─────────────────────────── */
+[data-theme='daylight'] {
+  color-scheme: light;
+
+  --bg-app: #f6f7fb;
+  --bg-app-gradient: radial-gradient(1100px 620px at 8% -12%, #e6e9ff 0%, transparent 62%),
+    radial-gradient(820px 520px at 102% -4%, #f3e6ff 0%, transparent 58%);
+  --bg-sidebar: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-2: #f1f3f9;
+  --bg-elevated: #ffffff;
+  --bg-inset: #eef0f7;
+  --bg-hover: rgba(15, 20, 40, 0.045);
+  --bg-active: rgba(15, 20, 40, 0.08);
+
+  --border: rgba(15, 20, 40, 0.09);
+  --border-strong: rgba(15, 20, 40, 0.18);
+
+  --text-primary: #171a26;
+  --text-secondary: #545a6e;
+  --text-muted: #878da3;
+  --text-inverted: #ffffff;
+
+  --accent: #4f5dff;
+  --accent-hover: #3f4df0;
+  --accent-soft: rgba(79, 93, 255, 0.1);
+  --accent-contrast: #ffffff;
+  --accent-gradient: linear-gradient(135deg, #4f5dff 0%, #a855f7 100%);
+
+  --danger: #e5484d;
+  --danger-soft: rgba(229, 72, 77, 0.1);
+  --success: #12a97a;
+  --warning: #d9820a;
+
+  --bubble-user: linear-gradient(135deg, #4f5dff 0%, #8b5cf6 100%);
+  --bubble-user-text: #ffffff;
+  --bubble-agent: #ffffff;
+
+  --shadow-sm: 0 1px 2px rgba(20, 26, 50, 0.06);
+  --shadow-md: 0 10px 30px -12px rgba(20, 26, 50, 0.18);
+  --shadow-lg: 0 24px 60px -20px rgba(20, 26, 50, 0.26);
+  --shadow-accent: 0 10px 28px -12px rgba(79, 93, 255, 0.5);
+
+  --scrollbar-thumb: rgba(15, 20, 40, 0.18);
+}
+
+/* ─────────────────────────── NEBULA (тёмно-фиолетовая) ─────────────────────────── */
+[data-theme='nebula'] {
+  color-scheme: dark;
+
+  --bg-app: #100a18;
+  --bg-app-gradient: radial-gradient(1100px 680px at 85% -12%, #3a1553 0%, transparent 58%),
+    radial-gradient(900px 560px at -5% 8%, #2a1146 0%, transparent 55%);
+  --bg-sidebar: #150e20;
+  --bg-surface: #191024;
+  --bg-surface-2: #21172f;
+  --bg-elevated: #261b37;
+  --bg-inset: #0d0714;
+  --bg-hover: rgba(255, 255, 255, 0.055);
+  --bg-active: rgba(255, 255, 255, 0.1);
+
+  --border: rgba(233, 200, 255, 0.1);
+  --border-strong: rgba(233, 200, 255, 0.2);
+
+  --text-primary: #f0e6fa;
+  --text-secondary: #b8a6cd;
+  --text-muted: #7f6d94;
+  --text-inverted: #100a18;
+
+  --accent: #d472ff;
+  --accent-hover: #e08fff;
+  --accent-soft: rgba(212, 114, 255, 0.16);
+  --accent-contrast: #1a0a24;
+  --accent-gradient: linear-gradient(135deg, #b06bff 0%, #ff6bc4 100%);
+
+  --danger: #ff6b8f;
+  --danger-soft: rgba(255, 107, 143, 0.15);
+  --success: #56e0b0;
+  --warning: #ffc46b;
+
+  --bubble-user: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+  --bubble-user-text: #ffffff;
+  --bubble-agent: var(--bg-surface-2);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 8px 24px -8px rgba(20, 0, 40, 0.7);
+  --shadow-lg: 0 24px 60px -18px rgba(20, 0, 40, 0.85);
+  --shadow-accent: 0 8px 30px -10px rgba(212, 114, 255, 0.55);
+
+  --scrollbar-thumb: rgba(233, 200, 255, 0.16);
+}
+
+/* ─────────────────────────── FOREST (тёмно-зелёная) ─────────────────────────── */
+[data-theme='forest'] {
+  color-scheme: dark;
+
+  --bg-app: #08120f;
+  --bg-app-gradient: radial-gradient(1050px 640px at 10% -10%, #0f3329 0%, transparent 58%),
+    radial-gradient(850px 520px at 100% 2%, #123a30 0%, transparent 55%);
+  --bg-sidebar: #0b1714;
+  --bg-surface: #0e1b17;
+  --bg-surface-2: #13241f;
+  --bg-elevated: #172c26;
+  --bg-inset: #060f0d;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.09);
+
+  --border: rgba(190, 255, 226, 0.09);
+  --border-strong: rgba(190, 255, 226, 0.18);
+
+  --text-primary: #e3f2ec;
+  --text-secondary: #9fb8ae;
+  --text-muted: #6c847b;
+  --text-inverted: #08120f;
+
+  --accent: #35d99b;
+  --accent-hover: #4ee5ac;
+  --accent-soft: rgba(53, 217, 155, 0.14);
+  --accent-contrast: #052018;
+  --accent-gradient: linear-gradient(135deg, #2bc98e 0%, #7fe0a0 100%);
+
+  --danger: #ff7a7a;
+  --danger-soft: rgba(255, 122, 122, 0.14);
+  --success: #35d99b;
+  --warning: #e8c46a;
+
+  --bubble-user: linear-gradient(135deg, #1f9e73 0%, #35d99b 100%);
+  --bubble-user-text: #04211a;
+  --bubble-agent: var(--bg-surface-2);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px -8px rgba(0, 20, 14, 0.65);
+  --shadow-lg: 0 24px 60px -18px rgba(0, 20, 14, 0.8);
+  --shadow-accent: 0 8px 28px -10px rgba(53, 217, 155, 0.45);
+
+  --scrollbar-thumb: rgba(190, 255, 226, 0.15);
+}
+
+/* ─────────────────────────── SAND (светлая тёплая) ─────────────────────────── */
+[data-theme='sand'] {
+  color-scheme: light;
+
+  --bg-app: #faf6f0;
+  --bg-app-gradient: radial-gradient(1050px 600px at 6% -12%, #f6e6d3 0%, transparent 60%),
+    radial-gradient(800px 500px at 104% -6%, #f3e2e2 0%, transparent 58%);
+  --bg-sidebar: #fffdfa;
+  --bg-surface: #fffdfa;
+  --bg-surface-2: #f4ede3;
+  --bg-elevated: #fffdfa;
+  --bg-inset: #f0e8dc;
+  --bg-hover: rgba(70, 45, 20, 0.05);
+  --bg-active: rgba(70, 45, 20, 0.09);
+
+  --border: rgba(70, 45, 20, 0.11);
+  --border-strong: rgba(70, 45, 20, 0.2);
+
+  --text-primary: #2b2118;
+  --text-secondary: #64574a;
+  --text-muted: #948575;
+  --text-inverted: #fffdfa;
+
+  --accent: #c2622a;
+  --accent-hover: #ab5522;
+  --accent-soft: rgba(194, 98, 42, 0.12);
+  --accent-contrast: #ffffff;
+  --accent-gradient: linear-gradient(135deg, #d97534 0%, #c2412a 100%);
+
+  --danger: #c0392b;
+  --danger-soft: rgba(192, 57, 43, 0.11);
+  --success: #2f8f5b;
+  --warning: #b57d15;
+
+  --bubble-user: linear-gradient(135deg, #d97534 0%, #c2412a 100%);
+  --bubble-user-text: #ffffff;
+  --bubble-agent: #fffdfa;
+
+  --shadow-sm: 0 1px 2px rgba(70, 45, 20, 0.07);
+  --shadow-md: 0 10px 30px -12px rgba(70, 45, 20, 0.2);
+  --shadow-lg: 0 24px 60px -20px rgba(70, 45, 20, 0.28);
+  --shadow-accent: 0 10px 28px -12px rgba(194, 98, 42, 0.45);
+
+  --scrollbar-thumb: rgba(70, 45, 20, 0.2);
+}

@@ -28,6 +28,17 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Persistence.Contracts", "Pe
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "backend", "backend", "{009E811A-071B-4F2E-9914-1C4E76B3F262}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "frontend", "frontend", "{DCB2D12A-41EB-4103-A817-34E31395B942}"
+	ProjectSection(SolutionItems) = preProject
+		frontend\README.md = frontend\README.md
+		frontend\package.json = frontend\package.json
+		frontend\vite.config.ts = frontend\vite.config.ts
+		frontend\tsconfig.json = frontend\tsconfig.json
+		frontend\tsconfig.app.json = frontend\tsconfig.app.json
+		frontend\.env.development = frontend\.env.development
+		frontend\.env.example = frontend\.env.example
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
