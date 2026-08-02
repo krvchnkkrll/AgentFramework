@@ -58,6 +58,8 @@ export const useChatsStore = defineStore('chats', () => {
   /** id сообщения, которое сейчас «печатается». */
   const streamingMessageId = ref<string | null>(null);
   let streamController: AbortController | null = null;
+  /** Чат, ответ в котором сейчас стримится — нужен, чтобы остановить генерацию на сервере. */
+  let streamingChatId: string | null = null;
 
   // ─────────────────────────────── computed ───────────────────────────────
 
@@ -156,7 +158,9 @@ export const useChatsStore = defineStore('chats', () => {
     // переход обрывал только что начавшийся ответ.
     if (activeChatId.value === chatId) return;
 
-    stopStreaming();
+    // Именно detachStream, а не stopStreaming: уход в другой чат не должен обрывать
+    // генерацию на сервере — вернёмся и увидим готовый ответ.
+    detachStream();
     activeChatId.value = chatId;
 
     if (!chatId || messagesByChat.value[chatId]) return;
@@ -343,6 +347,7 @@ export const useChatsStore = defineStore('chats', () => {
 
   async function streamReply(chatId: string, messageId: string): Promise<void> {
     streamingMessageId.value = messageId;
+    streamingChatId = chatId;
     streamController = new AbortController();
 
     const list = messagesByChat.value[chatId];
@@ -374,15 +379,36 @@ export const useChatsStore = defineStore('chats', () => {
       if (streamingMessageId.value === messageId) {
         streamingMessageId.value = null;
         streamController = null;
+        streamingChatId = null;
       }
     }
   }
 
-  /** Прервать «печать» ответа. */
-  function stopStreaming(): void {
+  /** Перестать слушать стрим на клиенте. Сервер при этом спокойно догенерирует ответ. */
+  function detachStream(): void {
     streamController?.abort();
     streamController = null;
     streamingMessageId.value = null;
+    streamingChatId = null;
+  }
+
+  /**
+   * Прервать генерацию по кнопке «стоп»: отцепляемся сами и просим сервер тоже остановиться.
+   * Без запроса на сервер модель продолжила бы считать, а чат оставался бы занятым
+   * и не принимал новые сообщения.
+   */
+  async function stopStreaming(): Promise<void> {
+    const chatId = streamingChatId;
+
+    detachStream();
+
+    if (!chatId) return;
+
+    try {
+      await chatsApi.stopGeneration(chatId);
+    } catch (e) {
+      toasts.error(describe(e, 'Не удалось остановить генерацию.'));
+    }
   }
 
   function touchChat(chatId: string, lastContent: string): void {

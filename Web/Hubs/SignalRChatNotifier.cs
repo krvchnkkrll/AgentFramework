@@ -22,6 +22,13 @@ internal sealed class SignalRChatNotifier(IHubContext<ChatHub> hubContext) : ICh
         CancellationToken cancellationToken = default) =>
         Group(chatId).SendAsync("messageCompleted", new { chatId, message }, cancellationToken);
 
+    public Task MessageFailedAsync(
+        Guid chatId,
+        Guid messageId,
+        string error,
+        CancellationToken cancellationToken = default) =>
+        Group(chatId).SendAsync("messageFailed", new { chatId, messageId, error }, cancellationToken);
+
     public Task ChatRenamedAsync(Guid chatId, string title, CancellationToken cancellationToken = default) =>
         Group(chatId).SendAsync("chatRenamed", new { chatId, title }, cancellationToken);
 

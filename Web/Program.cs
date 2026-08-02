@@ -1,4 +1,5 @@
 using Application;
+using Assistant;
 using Persistence;
 using Sso;
 using Web;
@@ -10,7 +11,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddWeb()
     .AddSso()
     .AddApplication()
-    .AddPersistence();
+    .AddPersistence()
+    .AddAssistant();
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();

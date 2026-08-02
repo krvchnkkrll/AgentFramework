@@ -3,6 +3,7 @@ using Application.Contracts.Features.Chats.Commands.DeleteChat;
 using Application.Contracts.Features.Chats.Commands.PinChat;
 using Application.Contracts.Features.Chats.Commands.RenameChat;
 using Application.Contracts.Features.Chats.Commands.SendMessage;
+using Application.Contracts.Features.Chats.Commands.StopGeneration;
 using Application.Contracts.Features.Chats.Commands.UnpinChat;
 using Application.Contracts.Features.Chats.Queries.GetChat;
 using Application.Contracts.Features.Chats.Queries.GetChatMessages;
@@ -103,6 +104,19 @@ public sealed class ConversationController(ISender sender) : AppController(sende
     {
         var result = await Sender.Send(
             new GetChatMessagesQuery(new GetChatMessagesRequest { ChatId = id }),
+            cancellationToken);
+
+        return HandleResult(result);
+    }
+
+    [HttpPost("{id:guid}/stop")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> StopGeneration(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await Sender.Send(
+            new StopGenerationCommand(new StopGenerationRequest { ChatId = id }),
             cancellationToken);
 
         return HandleResult(result);

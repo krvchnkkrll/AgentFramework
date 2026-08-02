@@ -7,10 +7,11 @@
  * с полями roleEnum/text вместо role/content, без вложений/агентов.
  * Вся эта разница транслируется тут — контракт ChatsApi и компоненты не меняются.
  *
- * Ответ ассистента — мок на бэкенде (Application/Features/Chats/MockAssistantResponder.cs),
- * стримится не по HTTP/SSE, а по SignalR (см. @/realtime/chatHub): sendMessage дожидается
- * события messageStarted, чтобы узнать id ещё не сохранённого сообщения, а
- * streamAssistantMessage слушает messageDelta/messageCompleted для этого id.
+ * Ответ ассистента генерирует LLM (Assistent/Agents/DefaultAgent.cs, пайплайн —
+ * Application/Services/GenerationRegistryService.cs) и стримится не по HTTP/SSE, а по SignalR
+ * (см. @/realtime/chatHub): sendMessage дожидается события messageStarted, чтобы узнать id
+ * ещё не сохранённого сообщения, а streamAssistantMessage слушает
+ * messageDelta/messageCompleted/messageFailed для этого id.
  *
  * Реализованные маршруты:
  *   GET    /api/chats
@@ -19,9 +20,11 @@
  *   POST   /api/chats/{chatId}/pin
  *   POST   /api/chats/{chatId}/unpin
  *   DELETE /api/chats/{chatId}
+ *   POST   /api/chats/{chatId}/stop
  *   GET    /api/chats/{chatId}/messages
  *   POST   /api/chats/{chatId}/messages    { text }
- *   WS     /hubs/chat                      messageStarted/messageDelta/messageCompleted/chatRenamed
+ *   WS     /hubs/chat                      messageStarted/messageDelta/messageCompleted/
+ *                                          messageFailed/chatRenamed
  *
  * Ещё не реализованы на бэкенде (см. описания у методов ниже, деградируют мягко
  * через ApiError.isNotImplemented): вложения, агенты.
@@ -182,8 +185,8 @@ export const realChatsApi: ChatsApi = {
       signal,
     }).then((message) => mapMessage(message, chatId));
 
-    // Реальный ответ (мок на бэкенде, Application/Features/Chats/MockAssistantResponder.cs)
-    // стримится по SignalR отдельно от этого запроса — id сообщения узнаём из messageStarted.
+    // Ответ ассистента стримится по SignalR отдельно от этого запроса — id сообщения
+    // узнаём из messageStarted.
     const assistantMessageId = await startedPromise;
 
     const assistantMessage: MessageResponse = {
@@ -206,6 +209,10 @@ export const realChatsApi: ChatsApi = {
     signal?: AbortSignal,
   ): Promise<MessageResponse> {
     return streamMessage(chatId, messageId, onDelta, signal).then((message) => mapMessage(message, chatId));
+  },
+
+  stopGeneration(chatId: string, signal?: AbortSignal): Promise<void> {
+    return request<void>(`/api/chats/${chatId}/stop`, { method: 'POST', signal });
   },
 
   uploadAttachment(file: File, signal?: AbortSignal): Promise<AttachmentResponse> {

@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Assistant</AssemblyName>
+        <RootNamespace>Assistant</RootNamespace>
+        <!--
+          MEAI001  — чат-редьюсеры Microsoft.Extensions.AI помечены как experimental.
+          OPENAI001 — клиент Responses API (нужен для Yandex AI Studio) тоже помечен как experimental.
+        -->
+        <NoWarn>$(NoWarn);MEAI001;OPENAI001</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.Agents.AI" />
+      <PackageReference Include="Microsoft.Agents.AI.OpenAI" />
+      <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+      <PackageReference Include="Microsoft.Extensions.Http" />
+      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+      <PackageReference Include="Microsoft.Extensions.Options" />
+      <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Assistant.Contracts\Assistant.Contracts.csproj" />
+    </ItemGroup>
+
+</Project>

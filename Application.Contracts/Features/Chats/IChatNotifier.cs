@@ -14,5 +14,11 @@ public interface IChatNotifier
 
     Task MessageCompletedAsync(Guid chatId, MessageResponse message, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Генерация оборвалась, сообщения не будет. Без этого события клиент, который ждёт
+    /// messageCompleted, висел бы вечно.
+    /// </summary>
+    Task MessageFailedAsync(Guid chatId, Guid messageId, string error, CancellationToken cancellationToken = default);
+
     Task ChatRenamedAsync(Guid chatId, string title, CancellationToken cancellationToken = default);
 }

@@ -256,6 +256,10 @@ export const mockChatsApi: ChatsApi = {
     return structuredClone(message);
   },
 
+  // В моке ответ «печатается» прямо в браузере и обрывается по AbortSignal —
+  // останавливать на сервере нечего.
+  async stopGeneration(): Promise<void> {},
+
   async uploadAttachment(file: File): Promise<AttachmentResponse> {
     // Имитируем сетевую задержку пропорционально размеру файла.
     await delay(Math.min(1200, 260 + file.size / 20_000));

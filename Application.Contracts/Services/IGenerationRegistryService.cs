@@ -10,4 +10,10 @@ public interface IGenerationRegistryService
     bool IsGenerationActive(Guid conversationId);
 
     Task StartGeneration(StartGenerationParameters parameters);
+
+    /// <summary>
+    /// Останавливает генерацию по требованию пользователя. Возвращает false, если генерации не было.
+    /// То, что модель успела сгенерировать, сохраняется как обычное сообщение.
+    /// </summary>
+    bool StopGeneration(Guid conversationId);
 }

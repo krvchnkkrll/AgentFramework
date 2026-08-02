@@ -15,7 +15,9 @@ public static class DependencyInjection
         builder.Services.AddOpenApi();
 
         builder.Services.AddSignalR();
-        builder.Services.AddScoped<IChatNotifier, SignalRChatNotifier>();
+        // Синглтон, а не scoped: нотификатором пользуется фоновая генерация (тоже синглтон),
+        // живущая вне HTTP-запроса. Зависит только от IHubContext, который и сам синглтон.
+        builder.Services.AddSingleton<IChatNotifier, SignalRChatNotifier>();
 
         return builder;
     }

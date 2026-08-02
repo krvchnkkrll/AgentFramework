@@ -32,6 +32,12 @@ interface MessageCompletedPayload {
   message: HubMessageResponse;
 }
 
+interface MessageFailedPayload {
+  chatId: string;
+  messageId: string;
+  error: string;
+}
+
 interface ChatRenamedPayload {
   chatId: string;
   title: string;
@@ -108,6 +114,7 @@ export async function streamMessage(
     const cleanup = (): void => {
       connection.off('messageDelta', onDeltaReceived);
       connection.off('messageCompleted', onCompleted);
+      connection.off('messageFailed', onFailed);
       signal?.removeEventListener('abort', onAbort);
     };
 
@@ -122,6 +129,13 @@ export async function streamMessage(
       resolve(payload.message);
     }
 
+    // Без этого события упавшая генерация оставляла бы сообщение в статусе streaming навсегда.
+    function onFailed(payload: MessageFailedPayload): void {
+      if (payload.chatId !== chatId || payload.messageId !== messageId) return;
+      cleanup();
+      reject(new Error(payload.error));
+    }
+
     function onAbort(): void {
       cleanup();
       reject(new DOMException('Aborted', 'AbortError'));
@@ -129,11 +143,12 @@ export async function streamMessage(
 
     connection.on('messageDelta', onDeltaReceived);
     connection.on('messageCompleted', onCompleted);
+    connection.on('messageFailed', onFailed);
     signal?.addEventListener('abort', onAbort);
   });
 }
 
-/** Живое переименование чата (например, когда мок-ассистент назвал его по первому сообщению). */
+/** Живое переименование чата — ассистент называет его сам после первого ответа. */
 export function onChatRenamed(handler: (chatId: string, title: string) => void): () => void {
   let unsubscribe: (() => void) | null = null;
   let disposed = false;

@@ -48,6 +48,13 @@ export interface ChatsApi {
     signal?: AbortSignal,
   ): Promise<MessageResponse>;
 
+  /**
+   * Просит сервер прекратить генерацию ответа в чате.
+   * Без этого abort на клиенте только перестаёт слушать — модель продолжает считать,
+   * а чат остаётся занятым и не принимает новые сообщения.
+   */
+  stopGeneration(chatId: string, signal?: AbortSignal): Promise<void>;
+
   uploadAttachment(file: File, signal?: AbortSignal): Promise<AttachmentResponse>;
   deleteAttachment(attachmentId: string, signal?: AbortSignal): Promise<void>;
 
