@@ -1,5 +1,7 @@
 using Application.Contracts.Features.Chats.Commands.SendMessage;
 using Application.Contracts.Features.Chats.Responses;
+using Application.Contracts.Models;
+using Application.Contracts.Services;
 using Domain.Common;
 using Domain.Entities.Conversations.Parameters;
 using Domain.Enums;
@@ -12,7 +14,7 @@ namespace Application.Features.Chats.Commands.SendMessage;
 file sealed class SendMessageCommandHandler(
     ICurrentUserService currentUserService,
     IConversationRepository conversationRepository,
-    MockAssistantResponder assistantResponder)
+    IGenerationRegistryService generationRegistryService)
     : IRequestHandler<SendMessageCommand, Result<MessageResponse>>
 {
     public async Task<Result<MessageResponse>> Handle(SendMessageCommand request, CancellationToken cancellationToken)
@@ -23,13 +25,15 @@ file sealed class SendMessageCommandHandler(
 
         var conversation = await conversationRepository.GetByIdAsync(request.Body.ChatId, cancellationToken);
 
-        // Not owned by the caller reads the same as not found — avoids confirming that a
-        // chat id belongs to someone else.
         if (conversation is null || conversation.UserId != userIdResult.Value)
             return Result.Failure<MessageResponse>(Error.NotFound("Chat.NotFound", "Chat was not found."));
 
-        // Always User here — a caller hitting this endpoint is a human sending a message,
-        // never impersonating the assistant/system/tool roles.
+        if (generationRegistryService.IsGenerationActive(conversation.Id))
+            return Result.Failure<MessageResponse>(
+                Error.Conflict("Chat.GenerationInProgress", "Дождитесь окончания текущей генерации."));
+
+        conversation.ResetError();
+
         var message = conversation.AddMessage(new AddMessageParameter
         {
             RoleEnum = MessageRoleEnum.User,
@@ -38,9 +42,11 @@ file sealed class SendMessageCommandHandler(
 
         await conversationRepository.SaveChangesAsync(cancellationToken);
 
-        // Detached on purpose: the HTTP response carries only the user's message, the
-        // (mocked) assistant reply streams separately over SignalR.
-        assistantResponder.Start(conversation.Id, request.Body.Text);
+        _ = Task.Run(() => generationRegistryService.StartGeneration(new StartGenerationParameters
+        {
+            UserId = userIdResult.Value,
+            ConversationId = conversation.Id,
+        }), CancellationToken.None);
 
         return message.ToResponse();
     }

@@ -14,6 +14,9 @@ public sealed class Conversation : Entity
     public DateTimeOffset CreatedAt { get; private init; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public bool IsPinned { get; private set; }
+    public bool HasError { get; private set; }
+    public string? ErrorMessage { get; private set; }
+    
     public IReadOnlyCollection<Message> Messages => _messages.AsReadOnly();
 
     private Conversation()
@@ -84,5 +87,17 @@ public sealed class Conversation : Entity
         var trimmed = title.Trim();
 
         return trimmed;
+    }
+    
+    public void ResetError()
+    {
+        HasError = false;
+        ErrorMessage = null;
+    }
+
+    public void SetError(string error)
+    {
+        HasError = true;
+        ErrorMessage = error;
     }
 }

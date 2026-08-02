@@ -16,26 +16,32 @@ public static class DependencyInjection
     {
         builder.Services.AddOptions<NpgsqlConnectionStringBuilder>().BindConfiguration("Postgres");
 
-        builder.Services.AddDbContextPool<DbContext>(static (serviceProvider, optionsBuilder) =>
-            {
-                var npgsqlConnectionStringBuilderOptions =
-                    serviceProvider.GetRequiredService<IOptions<NpgsqlConnectionStringBuilder>>();
-                var npgsqlConnectionStringBuilder = npgsqlConnectionStringBuilderOptions.Value;
-                var npgsqlConnectionString = npgsqlConnectionStringBuilder.ConnectionString;
+        void ConfigureNpgsql(IServiceProvider serviceProvider, DbContextOptionsBuilder optionsBuilder)
+        {
+            var npgsqlConnectionStringBuilderOptions =
+                serviceProvider.GetRequiredService<IOptions<NpgsqlConnectionStringBuilder>>();
+            var npgsqlConnectionStringBuilder = npgsqlConnectionStringBuilderOptions.Value;
+            var npgsqlConnectionString = npgsqlConnectionStringBuilder.ConnectionString;
 
-                optionsBuilder
-                    .UseSnakeCaseNamingConvention()
-                    .UseNpgsql(
-                        npgsqlConnectionString,
-                        builder =>
-                        {
-                            builder.MigrationsAssembly(typeof(DbContext).Assembly.FullName);
-                            builder.MigrationsHistoryTable(HistoryRepository.DefaultTableName);
-                        })
-                    .UseProjectables();
-            })
+            optionsBuilder
+                .UseSnakeCaseNamingConvention()
+                .UseNpgsql(
+                    npgsqlConnectionString,
+                    npgsqlBuilder =>
+                    {
+                        npgsqlBuilder.MigrationsAssembly(typeof(DbContext).Assembly.FullName);
+                        npgsqlBuilder.MigrationsHistoryTable(HistoryRepository.DefaultTableName);
+                    })
+                .UseProjectables();
+        }
+
+        builder.Services.AddDbContextPool<DbContext>(ConfigureNpgsql)
             .AddScoped<DbContext>()
             .AddScoped<IDbContext>(static serviceProvider => serviceProvider.GetRequiredService<DbContext>());
+        
+        builder.Services.AddDbContextFactory<DbContext>(ConfigureNpgsql);
+
+        builder.Services.AddSingleton<IDbContextFactory, DbContextFactory>();
 
         builder.Services.AddScoped<IUserRepository, UserRepository>();
         builder.Services.AddScoped<IConversationRepository, ConversationRepository>();

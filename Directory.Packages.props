@@ -6,6 +6,8 @@
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="EntityFrameworkCore.Projectables" Version="6.0.6" />
     <PackageVersion Include="MediatR" Version="12.5.0" />
+    <PackageVersion Include="Microsoft.Agents.AI" Version="1.16.0" />
+    <PackageVersion Include="Microsoft.Agents.AI.OpenAI" Version="1.16.0" />
     <PackageVersion Include="MediatR.Contracts" Version="2.0.1" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
