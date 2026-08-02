@@ -4,7 +4,7 @@
  * Бэкенд реализует чаты и сообщения (см. Web/Controllers/ConversationController.cs),
  * но в другой форме, чем изначально предполагалось здесь: список без lastMessagePreview,
  * PATCH только для title (pin/unpin — отдельные POST-эндпоинты), MessageResponse
- * с полями roleEnum/text вместо role/content, без вложений/агентов.
+ * с полями roleEnum/text вместо role/content, без вложений.
  * Вся эта разница транслируется тут — контракт ChatsApi и компоненты не меняются.
  *
  * Ответ ассистента генерирует LLM (Assistent/Agents/DefaultAgent.cs, пайплайн —
@@ -24,12 +24,19 @@
  *   GET    /api/chats/{chatId}/messages
  *   POST   /api/chats/{chatId}/messages    { text }
  *   WS     /hubs/chat                      messageStarted/messageDelta/messageCompleted/
- *                                          messageFailed/chatRenamed
+ *                                          messageFailed/chatRenamed/
+ *                                          toolCallStarted/toolCallCompleted
  *
- * Ещё не реализованы на бэкенде (см. описания у методов ниже, деградируют мягко
- * через ApiError.isNotImplemented): вложения, агенты.
+ *   GET    /api/agents
+ *   POST   /api/agents
+ *   PUT    /api/agents/{agentId}
+ *   DELETE /api/agents/{agentId}
+ *   GET    /api/agents/skills
+ *   PUT    /api/chats/{chatId}/agent      { agentId }
+ *
+ * Ещё не реализованы на бэкенде (деградируют мягко через ApiError.isNotImplemented): вложения.
  */
-import type { ChatsApi, DeltaHandler, SendMessageResult } from './contract';
+import type { ChatsApi, SendMessageResult, StreamHandlers } from './contract';
 import { ApiError, request } from './http';
 import type {
   AgentResponse,
@@ -38,7 +45,9 @@ import type {
   CreateChatRequest,
   MessageResponse,
   MessageRole,
+  SaveAgentRequest,
   SendMessageRequest,
+  SkillResponse,
   UpdateChatRequest,
 } from './types';
 import { joinChat, streamMessage, waitForMessageStarted } from '@/realtime/chatHub';
@@ -51,6 +60,7 @@ interface BackendChatSummaryResponse {
   createdAt: string;
   updatedAt: string;
   isPinned: boolean;
+  agentId: string | null;
 }
 
 /** Форма ответа .../Responses/ChatResponse.cs — та же чат-запись, но с сообщениями. */
@@ -101,7 +111,7 @@ function mapChatSummary(chat: BackendChatSummaryResponse): ChatResponse {
     // Список отдаёт GET /api/chats без сообщений — превью пока взять неоткуда.
     lastMessagePreview: null,
     pinned: chat.isPinned,
-    agentId: null,
+    agentId: chat.agentId,
   };
 }
 
@@ -113,7 +123,7 @@ function mapChat(chat: BackendChatResponse): ChatResponse {
     updatedAt: chat.updatedAt,
     lastMessagePreview: previewOf(chat.messages),
     pinned: chat.isPinned,
-    agentId: null,
+    agentId: chat.agentId,
   };
 }
 
@@ -132,7 +142,8 @@ export const realChatsApi: ChatsApi = {
 
     return request<BackendChatResponse>('/api/chats', {
       method: 'POST',
-      json: { title },
+      // agentId: null — чат отвечает встроенным агентом.
+      json: { title, agentId: body.agentId ?? null },
       signal,
     }).then(mapChat);
   },
@@ -158,8 +169,19 @@ export const realChatsApi: ChatsApi = {
       );
     }
 
-    // Только agentId без title/pinned — сменить агента у чата бэкенд пока не умеет.
-    throw NOT_IMPLEMENTED('Выбор агента');
+    if (body.agentId !== undefined) {
+      return realChatsApi.setChatAgent(chatId, body.agentId, signal);
+    }
+
+    throw NOT_IMPLEMENTED('Обновление чата без единого поля');
+  },
+
+  setChatAgent(chatId: string, agentId: string | null, signal?: AbortSignal): Promise<ChatResponse> {
+    return request<BackendChatResponse>(`/api/chats/${chatId}/agent`, {
+      method: 'PUT',
+      json: { agentId },
+      signal,
+    }).then(mapChat);
   },
 
   deleteChat(chatId: string, signal) {
@@ -205,10 +227,12 @@ export const realChatsApi: ChatsApi = {
   streamAssistantMessage(
     chatId: string,
     messageId: string,
-    onDelta: DeltaHandler,
+    handlers: StreamHandlers,
     signal?: AbortSignal,
   ): Promise<MessageResponse> {
-    return streamMessage(chatId, messageId, onDelta, signal).then((message) => mapMessage(message, chatId));
+    return streamMessage(chatId, messageId, handlers, signal).then((message) =>
+      mapMessage(message, chatId),
+    );
   },
 
   stopGeneration(chatId: string, signal?: AbortSignal): Promise<void> {
@@ -232,5 +256,21 @@ export const realChatsApi: ChatsApi = {
 
   listAgents(signal) {
     return request<AgentResponse[]>('/api/agents', { signal });
+  },
+
+  listSkills(signal) {
+    return request<SkillResponse[]>('/api/agents/skills', { signal });
+  },
+
+  createAgent(body: SaveAgentRequest, signal) {
+    return request<AgentResponse>('/api/agents', { method: 'POST', json: body, signal });
+  },
+
+  updateAgent(agentId: string, body: SaveAgentRequest, signal) {
+    return request<AgentResponse>(`/api/agents/${agentId}`, { method: 'PUT', json: body, signal });
+  },
+
+  deleteAgent(agentId: string, signal) {
+    return request<void>(`/api/agents/${agentId}`, { method: 'DELETE', signal });
   },
 };

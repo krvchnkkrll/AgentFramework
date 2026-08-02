@@ -6,23 +6,26 @@
  * Когда появятся настоящие эндпоинты — просто поставь VITE_USE_MOCKS=false,
  * этот файл можно будет удалить целиком.
  */
-import type { ChatsApi, DeltaHandler, SendMessageResult } from '../contract';
+import type { ChatsApi, SendMessageResult, StreamHandlers } from '../contract';
 import type {
   AgentResponse,
   AttachmentResponse,
   ChatResponse,
   CreateChatRequest,
   MessageResponse,
+  SaveAgentRequest,
   SendMessageRequest,
+  SkillResponse,
   UpdateChatRequest,
 } from '../types';
-import { seedAgents, seedChats, seedMessages } from './seed';
+import { seedAgents, seedChats, seedMessages, seedSkills } from './seed';
 
 const STORAGE_KEY = 'af.mock.db.v1';
 
 interface MockDb {
   chats: ChatResponse[];
   messages: Record<string, MessageResponse[]>;
+  agents: AgentResponse[];
 }
 
 /** Вложения держим отдельно: blob:-ссылки живут только в текущей вкладке. */
@@ -38,7 +41,11 @@ function loadDb(): MockDb {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as MockDb;
-      if (Array.isArray(parsed.chats) && parsed.messages) return parsed;
+      // agents появились позже — у старых сохранений их нет, добираем из сидов.
+      if (Array.isArray(parsed.chats) && parsed.messages) {
+        parsed.agents ??= structuredClone(seedAgents);
+        return parsed;
+      }
     }
   } catch {
     // повреждённый стейт — просто пересоздаём
@@ -47,6 +54,7 @@ function loadDb(): MockDb {
   return {
     chats: structuredClone(seedChats),
     messages: structuredClone(seedMessages),
+    agents: structuredClone(seedAgents),
   };
 }
 
@@ -55,6 +63,7 @@ function persist(): void {
     // Вложения не сериализуем: blob-ссылки всё равно протухнут.
     const serialisable: MockDb = {
       chats: db.chats,
+      agents: db.agents,
       messages: Object.fromEntries(
         Object.entries(db.messages).map(([chatId, list]) => [
           chatId,
@@ -69,6 +78,36 @@ function persist(): void {
 }
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Изображает работу инструментов перед ответом: на реальном бэкенде агент действительно
+ * может уйти на десятки секунд в load_skill или grep, и именно эту паузу показывает UI.
+ * Последний вызов намеренно падает — иначе состояние ошибки негде проверить.
+ */
+async function simulateToolCalls(handlers: StreamHandlers, signal?: AbortSignal): Promise<void> {
+  const script: { name: string; arguments: string | null; ms: number; error: string | null }[] = [
+    { name: 'get_current_time', arguments: '{"timeZone":"Europe/Moscow"}', ms: 500, error: null },
+    { name: 'load_skill', arguments: '{"name":"postgres-review"}', ms: 1400, error: null },
+    {
+      name: 'search_knowledge_base',
+      arguments: '{"query":"регламент выката"}',
+      ms: 900,
+      error: 'Индекс knowledge недоступен.',
+    },
+  ];
+
+  for (const step of script) {
+    if (signal?.aborted) return;
+
+    const id = newId();
+    handlers.onToolCallStarted?.({ id, name: step.name, arguments: step.arguments });
+
+    await delay(step.ms);
+    if (signal?.aborted) return;
+
+    handlers.onToolCallCompleted?.(id, step.error);
+  }
+}
 const newId = () => crypto.randomUUID();
 
 function requireChat(chatId: string): ChatResponse {
@@ -134,7 +173,8 @@ export const mockChatsApi: ChatsApi = {
       updatedAt: timestamp,
       lastMessagePreview: null,
       pinned: false,
-      agentId: body.agentId ?? seedAgents[0].id,
+      // null — чат отвечает встроенным агентом, ровно как на бэкенде.
+      agentId: body.agentId ?? null,
     };
 
     db.chats.unshift(chat);
@@ -218,7 +258,7 @@ export const mockChatsApi: ChatsApi = {
   async streamAssistantMessage(
     chatId: string,
     messageId: string,
-    onDelta: DeltaHandler,
+    handlers: StreamHandlers,
     signal?: AbortSignal,
   ): Promise<MessageResponse> {
     const list = db.messages[chatId] ?? [];
@@ -233,12 +273,14 @@ export const mockChatsApi: ChatsApi = {
 
     await delay(420); // «агент думает»
 
+    await simulateToolCalls(handlers, signal);
+
     let content = '';
     for (const token of tokens) {
       if (signal?.aborted) break;
 
       content += token;
-      onDelta(token);
+      handlers.onDelta(token);
       await delay(token.includes('\n') ? 34 : 18);
     }
 
@@ -284,7 +326,70 @@ export const mockChatsApi: ChatsApi = {
 
   async listAgents(): Promise<AgentResponse[]> {
     await delay(80);
-    return structuredClone(seedAgents);
+    return structuredClone(db.agents);
+  },
+
+  async listSkills(): Promise<SkillResponse[]> {
+    await delay(60);
+    return structuredClone(seedSkills);
+  },
+
+  async createAgent(body: SaveAgentRequest): Promise<AgentResponse> {
+    await delay(180);
+
+    const now = new Date().toISOString();
+    // skills копируем отдельно: если вызывающий передал реактивный массив, в базе мока
+    // не должно осесть ничего, кроме обычных значений.
+    const agent: AgentResponse = {
+      ...body,
+      skills: [...body.skills],
+      id: newId(),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    db.agents.push(agent);
+    persist();
+
+    return structuredClone(agent);
+  },
+
+  async updateAgent(agentId: string, body: SaveAgentRequest): Promise<AgentResponse> {
+    await delay(180);
+
+    const agent = db.agents.find((a) => a.id === agentId);
+    if (!agent) throw new Error(`Агент ${agentId} не найден.`);
+
+    Object.assign(agent, body, { skills: [...body.skills], updatedAt: new Date().toISOString() });
+    persist();
+
+    return structuredClone(agent);
+  },
+
+  async deleteAgent(agentId: string): Promise<void> {
+    await delay(150);
+
+    db.agents = db.agents.filter((a) => a.id !== agentId);
+
+    // Чаты удалённого агента не пропадают — они возвращаются к встроенному, как и на бэкенде.
+    for (const chat of db.chats) {
+      if (chat.agentId === agentId) chat.agentId = null;
+    }
+
+    persist();
+  },
+
+  async setChatAgent(chatId: string, agentId: string | null): Promise<ChatResponse> {
+    await delay(120);
+
+    const chat = db.chats.find((c) => c.id === chatId);
+    if (!chat) throw new Error(`Чат ${chatId} не найден.`);
+
+    chat.agentId = agentId;
+    chat.updatedAt = new Date().toISOString();
+    persist();
+
+    return structuredClone(chat);
   },
 };
 

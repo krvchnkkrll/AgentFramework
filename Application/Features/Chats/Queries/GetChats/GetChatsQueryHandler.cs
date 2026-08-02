@@ -28,7 +28,8 @@ file sealed class GetChatsQueryHandler(
                 conversation.Title,
                 conversation.CreatedAt,
                 conversation.UpdatedAt,
-                conversation.IsPinned))
+                conversation.IsPinned,
+                conversation.AgentId))
             .ToArray();
     }
 }

@@ -15,6 +15,27 @@ public interface IChatNotifier
     Task MessageCompletedAsync(Guid chatId, MessageResponse message, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Агент начал вызывать инструмент. Между этим событием и следующей дельтой текста может
+    /// пройти много времени (скилл читается, файл ищется), и без индикации клиент выглядит зависшим.
+    /// </summary>
+    Task ToolCallStartedAsync(
+        Guid chatId,
+        Guid messageId,
+        ToolCallResponse toolCall,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Инструмент отработал. <paramref name="error"/> не пустой, если он упал —
+    /// агент в этом случае обычно продолжает отвечать, просто без его результата.
+    /// </summary>
+    Task ToolCallCompletedAsync(
+        Guid chatId,
+        Guid messageId,
+        Guid toolCallId,
+        string? error,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Генерация оборвалась, сообщения не будет. Без этого события клиент, который ждёт
     /// messageCompleted, висел бы вечно.
     /// </summary>

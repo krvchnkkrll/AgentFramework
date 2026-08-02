@@ -15,4 +15,10 @@ export const chatsApi: ChatsApi = config.useMocks ? mockChatsApi : realChatsApi;
 export { usersApi } from './users';
 export { ApiError } from './http';
 export type * from './types';
-export type { ChatsApi, SendMessageResult, DeltaHandler } from './contract';
+export type {
+  ChatsApi,
+  DeltaHandler,
+  SendMessageResult,
+  StreamHandlers,
+  ToolCallEvent,
+} from './contract';

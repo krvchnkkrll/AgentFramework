@@ -3,6 +3,7 @@ using Application.Contracts.Features.Chats.Commands.DeleteChat;
 using Application.Contracts.Features.Chats.Commands.PinChat;
 using Application.Contracts.Features.Chats.Commands.RenameChat;
 using Application.Contracts.Features.Chats.Commands.SendMessage;
+using Application.Contracts.Features.Chats.Commands.SetChatAgent;
 using Application.Contracts.Features.Chats.Commands.StopGeneration;
 using Application.Contracts.Features.Chats.Commands.UnpinChat;
 using Application.Contracts.Features.Chats.Queries.GetChat;
@@ -85,6 +86,23 @@ public sealed class ConversationController(ISender sender) : AppController(sende
         return HandleResult(result);
     }
 
+    /// <summary>
+    /// Меняет агента чата. Состояние сессии при этом сбрасывается — контекст, собранный
+    /// прошлым агентом, новому не подходит.
+    /// </summary>
+    [HttpPut("{id:guid}/agent")]
+    [ProducesResponseType<ChatResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SetChatAgent(Guid id, SetChatAgentHttpBody body, CancellationToken cancellationToken)
+    {
+        var result = await Sender.Send(
+            new SetChatAgentCommand(new SetChatAgentRequest { ChatId = id, AgentId = body.AgentId }),
+            cancellationToken);
+
+        return HandleResult(result);
+    }
+
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -139,3 +157,5 @@ public sealed class ConversationController(ISender sender) : AppController(sende
 public sealed record RenameChatHttpBody(string Title);
 
 public sealed record SendMessageHttpBody(string Text);
+
+public sealed record SetChatAgentHttpBody(Guid? AgentId);

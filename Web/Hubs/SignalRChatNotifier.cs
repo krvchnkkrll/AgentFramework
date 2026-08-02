@@ -22,6 +22,24 @@ internal sealed class SignalRChatNotifier(IHubContext<ChatHub> hubContext) : ICh
         CancellationToken cancellationToken = default) =>
         Group(chatId).SendAsync("messageCompleted", new { chatId, message }, cancellationToken);
 
+    public Task ToolCallStartedAsync(
+        Guid chatId,
+        Guid messageId,
+        ToolCallResponse toolCall,
+        CancellationToken cancellationToken = default) =>
+        Group(chatId).SendAsync("toolCallStarted", new { chatId, messageId, toolCall }, cancellationToken);
+
+    public Task ToolCallCompletedAsync(
+        Guid chatId,
+        Guid messageId,
+        Guid toolCallId,
+        string? error,
+        CancellationToken cancellationToken = default) =>
+        Group(chatId).SendAsync(
+            "toolCallCompleted",
+            new { chatId, messageId, toolCallId, error },
+            cancellationToken);
+
     public Task MessageFailedAsync(
         Guid chatId,
         Guid messageId,

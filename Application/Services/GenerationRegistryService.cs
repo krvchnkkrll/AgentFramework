@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using Application.Contracts.Features.Chats;
+using Application.Contracts.Features.Chats.Responses;
 using Application.Contracts.Models;
 using Application.Contracts.Services;
+using Application.Features.Agents;
 using Application.Features.Chats;
 using Assistant.Contracts;
 using Assistant.Contracts.Models;
@@ -130,6 +132,9 @@ internal sealed class GenerationRegistryService(
 
         var wasCancelled = false;
 
+        // Запоминаем до прогона: в catch поле уже могло быть перезаписано новым состоянием.
+        var hadAgentState = !string.IsNullOrEmpty(conversation.AgentState);
+
         // Считаем, что именно прислал агент. Нужно ровно для одного случая: если текста не пришло,
         // без этой раскладки непонятно, ответила модель рассуждениями, вызовом инструмента
         // или вообще ничем.
@@ -138,7 +143,20 @@ internal sealed class GenerationRegistryService(
 
         try
         {
-            var updates = assistantAgent.RunStreamingAsync(lastUserMessage.Text, history, cancellationToken);
+            // Состояние сессии агента (сжатая история, todo-лист, режим, подтверждения) уезжает
+            // в агента и возвращается обновлённым последним событием стрима. История из БД —
+            // запасной вариант на первый ход и на случай, если состояние не прочиталось.
+            var request = new AssistantRunRequest
+            {
+                UserText = lastUserMessage.Text,
+                History = history,
+                SessionState = conversation.AgentState,
+                Agent = await GetAgentDefinitionAsync(conversation, context),
+                UserId = activeGeneration.UserId,
+                ConversationId = conversationId,
+            };
+
+            var updates = assistantAgent.RunStreamingAsync(request, cancellationToken);
 
             await foreach (var update in updates.WithCancellation(cancellationToken))
             {
@@ -146,6 +164,12 @@ internal sealed class GenerationRegistryService(
 
                 if (update.Kind == AssistantUpdateKindEnum.Reasoning)
                     reasoningLength += update.Text?.Length ?? 0;
+
+                if (update.Kind == AssistantUpdateKindEnum.SessionState)
+                {
+                    conversation.SaveAgentState(update.Text);
+                    continue;
+                }
 
                 await HandleUpdateAsync(update, conversationId, messageId, activeGeneration);
             }
@@ -159,6 +183,20 @@ internal sealed class GenerationRegistryService(
         {
             logger.LogError(exception, "Агент упал при генерации ответа для чата {ConversationId}.", conversationId);
 
+            // Сбрасываем состояние сессии агента. Если упало именно на нём — например, модель
+            // не приняла восстановленную историю — то без сброса чат превращается в кирпич:
+            // каждая следующая попытка подсовывала бы агенту то же самое состояние и падала так же.
+            // Ценой потери сжатия и todo-листа следующий заход соберёт сессию из истории в БД.
+            if (hadAgentState)
+            {
+                logger.LogWarning(
+                    "Сбрасываем состояние сессии агента для чата {ConversationId} — следующая попытка "
+                    + "начнётся с истории переписки.",
+                    conversationId);
+
+                conversation.ResetAgentState();
+            }
+
             await FailAsync(conversation, context, messageId, GenerationFailedMessage);
             return;
         }
@@ -169,7 +207,10 @@ internal sealed class GenerationRegistryService(
         {
             if (wasCancelled)
             {
-                // Остановили до первого токена — сохранять нечего.
+                // Остановили до первого токена — сообщение сохранять нечего, но состояние сессии
+                // агента уже могло измениться, и его терять не хочется.
+                await context.SaveChangesAsync(CancellationToken.None);
+
                 await chatNotifier.MessageFailedAsync(
                     conversationId,
                     messageId,
@@ -212,7 +253,6 @@ internal sealed class GenerationRegistryService(
         Guid messageId,
         ActiveGeneration activeGeneration)
     {
-        Console.Write(update.Text);
         switch (update.Kind)
         {
             case AssistantUpdateKindEnum.Text when !string.IsNullOrEmpty(update.Text):
@@ -222,13 +262,23 @@ internal sealed class GenerationRegistryService(
                 await chatNotifier.MessageDeltaAsync(conversationId, messageId, update.Text, CancellationToken.None);
                 break;
 
-            case AssistantUpdateKindEnum.ToolCall when update.ToolName is not null:
-                activeGeneration.AddToolMessage(new PipelineCallingInformation
-                {
-                    Id = Guid.CreateVersion7(),
-                    CallingName = update.ToolName,
-                    CallingInformation = update.ToolArguments,
-                });
+            case AssistantUpdateKindEnum.ToolCall when update is { ToolName: not null, CallId: not null }:
+                await NotifyToolCallStartedAsync(update, conversationId, messageId, activeGeneration);
+                break;
+
+            case AssistantUpdateKindEnum.ToolResult when update.CallId is not null:
+                await NotifyToolCallCompletedAsync(update, conversationId, messageId, activeGeneration);
+                break;
+
+            case AssistantUpdateKindEnum.ApprovalRequired when update.ToolName is not null:
+                // Агент упёрся в инструмент, требующий подтверждения, и дальше не пойдёт, пока
+                // ему не вернут ToolApprovalResponseContent. Пробрасывания ответа через UI пока нет,
+                // поэтому здесь только запись в лог — включать Assistant:Approvals без него не нужно.
+                logger.LogWarning(
+                    "Чат {ConversationId}: агент ждёт подтверждения на вызов инструмента {ToolName}, "
+                    + "но отвечать на подтверждения приложение пока не умеет.",
+                    conversationId,
+                    update.ToolName);
                 break;
 
             case AssistantUpdateKindEnum.Error when update.Error is not null:
@@ -247,11 +297,78 @@ internal sealed class GenerationRegistryService(
                 break;
 
             case AssistantUpdateKindEnum.Reasoning:
-            case AssistantUpdateKindEnum.ToolResult:
             default:
-                // Рассуждения модели и сырые результаты инструментов пользователю не показываем.
+                // Рассуждения модели пользователю пока не показываем.
                 break;
         }
+    }
+
+    /// <summary>
+    /// Сообщает клиенту, что агент полез в инструмент. Событие идёт до того, как инструмент
+    /// отработает, — именно эта пауза и выглядит в UI зависанием.
+    /// </summary>
+    private async Task NotifyToolCallStartedAsync(
+        AssistantStreamUpdate update,
+        Guid conversationId,
+        Guid messageId,
+        ActiveGeneration activeGeneration)
+    {
+        var toolCall = new PipelineCallingInformation
+        {
+            Id = Guid.CreateVersion7(),
+            CallId = update.CallId!,
+            CallingName = update.ToolName!,
+            CallingInformation = update.ToolArguments,
+        };
+
+        // Модель может прислать один и тот же вызов несколькими кусками — дублировать событие не надо.
+        if (!activeGeneration.TryAddToolCall(toolCall))
+            return;
+
+        logger.LogInformation(
+            "Чат {ConversationId}: агент вызывает инструмент {ToolName}.",
+            conversationId,
+            toolCall.CallingName);
+
+        await chatNotifier.ToolCallStartedAsync(
+            conversationId,
+            messageId,
+            new ToolCallResponse
+            {
+                Id = toolCall.Id,
+                Name = toolCall.CallingName,
+                Arguments = toolCall.CallingInformation,
+            },
+            CancellationToken.None);
+    }
+
+    private async Task NotifyToolCallCompletedAsync(
+        AssistantStreamUpdate update,
+        Guid conversationId,
+        Guid messageId,
+        ActiveGeneration activeGeneration)
+    {
+        // Результат без начала — например, вызов пришёл ещё до того, как клиент подписался.
+        // Показывать нечего.
+        var toolCall = activeGeneration.FindToolCall(update.CallId!);
+        if (toolCall is null)
+            return;
+
+        if (update.Error is not null)
+        {
+            logger.LogWarning(
+                "Чат {ConversationId}: инструмент {ToolName} вернул ошибку: {Error}.",
+                conversationId,
+                toolCall.CallingName,
+                update.Error);
+        }
+
+        await chatNotifier.ToolCallCompletedAsync(
+            conversationId,
+            messageId,
+            toolCall.Id,
+            update.Error,
+            CancellationToken.None);
     }
 
     /// <summary>
@@ -329,6 +446,32 @@ internal sealed class GenerationRegistryService(
         },
         Text = message.Text,
     };
+
+    /// <summary>
+    /// Достаёт настройки агента, назначенного чату. Пусто — отвечает встроенный агент.
+    /// Агента могли удалить, пока чат жил: внешний ключ обнулится сам, но перестраховываемся.
+    /// </summary>
+    private async Task<AssistantAgentDefinition?> GetAgentDefinitionAsync(
+        Conversation conversation,
+        IDbContext context)
+    {
+        if (conversation.AgentId is not { } agentId)
+            return null;
+
+        var agent = await context.Agents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(candidate => candidate.Id == agentId, CancellationToken.None);
+
+        if (agent is not null)
+            return agent.ToDefinition();
+
+        logger.LogWarning(
+            "Чат {ConversationId} ссылается на несуществующего агента {AgentId} — отвечает встроенный.",
+            conversation.Id,
+            agentId);
+
+        return null;
+    }
 
     private static async Task<Conversation> GetConversationAsync(Guid conversationId, IDbContext context)
     {

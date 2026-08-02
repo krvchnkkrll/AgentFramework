@@ -13,6 +13,7 @@ internal static class ConversationMappingExtensions
             conversation.CreatedAt,
             conversation.UpdatedAt,
             conversation.IsPinned,
+            conversation.AgentId,
             conversation.Messages.Select(message => message.ToResponse()).ToArray());
 
     public static MessageResponse ToResponse(this Message message) =>

@@ -8,7 +8,15 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
 import { ApiError, chatsApi } from '@/api';
-import type { AgentResponse, AttachmentResponse, ChatResponse, MessageResponse } from '@/api';
+import type {
+  AgentResponse,
+  AttachmentResponse,
+  ChatResponse,
+  MessageResponse,
+  SaveAgentRequest,
+  SkillResponse,
+} from '@/api';
+import { BUILT_IN_AGENT_ID, builtInAgent } from '@/api/builtInAgent';
 import { config } from '@/config';
 import { onChatRenamed } from '@/realtime/chatHub';
 import {
@@ -42,7 +50,10 @@ export const useChatsStore = defineStore('chats', () => {
   const toasts = useToastStore();
 
   const chats = ref<ChatResponse[]>([]);
+  /** Только пользовательские агенты. Встроенный подмешивается в allAgents. */
   const agents = ref<AgentResponse[]>([]);
+  const skills = ref<SkillResponse[]>([]);
+  const agentsLoading = ref(false);
   const messagesByChat = ref<Record<string, MessageResponse[]>>({});
   const drafts = ref<Record<string, Draft>>({});
 
@@ -103,21 +114,28 @@ export const useChatsStore = defineStore('chats', () => {
       .map((key) => ({ key, label: bucketLabels[key], chats: buckets.get(key)! }));
   });
 
+  /** Встроенный агент первым, дальше пользовательские — в таком виде список идёт в UI. */
+  const allAgents = computed<AgentResponse[]>(() => [builtInAgent, ...agents.value]);
+
   const canSend = computed(() => {
     const draft = activeDraft.value;
     const hasContent = draft.text.trim().length > 0 || draft.attachments.length > 0;
     return hasContent && !sending.value && uploadingCount.value === 0 && !streamingMessageId.value;
   });
 
-  function agentById(id: string | null | undefined): AgentResponse | null {
-    if (!id) return null;
-    return agents.value.find((a) => a.id === id) ?? null;
+  /**
+   * Агент чата. null у чата означает встроенного агента, а не «никакого» —
+   * поэтому здесь возвращается именно он, а не null.
+   */
+  function agentById(id: string | null | undefined): AgentResponse {
+    if (!id || id === BUILT_IN_AGENT_ID) return builtInAgent;
+    return agents.value.find((a) => a.id === id) ?? builtInAgent;
   }
 
   // ─────────────────────────────── загрузка ───────────────────────────────
 
   async function init(): Promise<void> {
-    await Promise.all([loadChats(), loadAgents()]);
+    await Promise.all([loadChats(), loadAgents(), loadSkills()]);
 
     // Мок-ассистент на бэкенде может переименовать чат по первому сообщению —
     // это приходит пушем по SignalR, а не как ответ на какой-то наш вызов.
@@ -144,10 +162,72 @@ export const useChatsStore = defineStore('chats', () => {
   }
 
   async function loadAgents(): Promise<void> {
+    agentsLoading.value = true;
     try {
       agents.value = await chatsApi.listAgents();
     } catch {
       agents.value = [];
+    } finally {
+      agentsLoading.value = false;
+    }
+  }
+
+  /** Скиллы меняются только при деплое, поэтому грузим один раз и держим. */
+  async function loadSkills(): Promise<void> {
+    if (skills.value.length > 0) return;
+
+    try {
+      skills.value = await chatsApi.listSkills();
+    } catch {
+      skills.value = [];
+    }
+  }
+
+  async function createAgent(form: SaveAgentRequest): Promise<AgentResponse | null> {
+    try {
+      const agent = await chatsApi.createAgent(form);
+      agents.value.push(agent);
+      toasts.success(`Агент «${agent.name}» создан.`);
+      return agent;
+    } catch (e) {
+      toasts.error(describe(e, 'Не удалось создать агента.'));
+      return null;
+    }
+  }
+
+  async function updateAgent(agentId: string, form: SaveAgentRequest): Promise<AgentResponse | null> {
+    try {
+      const agent = await chatsApi.updateAgent(agentId, form);
+
+      const index = agents.value.findIndex((a) => a.id === agentId);
+      if (index !== -1) agents.value[index] = agent;
+
+      toasts.success(`Агент «${agent.name}» сохранён.`);
+      return agent;
+    } catch (e) {
+      toasts.error(describe(e, 'Не удалось сохранить агента.'));
+      return null;
+    }
+  }
+
+  async function deleteAgent(agentId: string): Promise<void> {
+    const index = agents.value.findIndex((a) => a.id === agentId);
+    if (index === -1) return;
+
+    const [removed] = agents.value.splice(index, 1);
+
+    try {
+      await chatsApi.deleteAgent(agentId);
+
+      // Чаты удалённого агента возвращаются к встроенному — так же, как на бэкенде.
+      for (const chat of chats.value) {
+        if (chat.agentId === agentId) chat.agentId = null;
+      }
+
+      toasts.success(`Агент «${removed.name}» удалён.`);
+    } catch (e) {
+      agents.value.splice(index, 0, removed);
+      toasts.error(describe(e, 'Не удалось удалить агента.'));
     }
   }
 
@@ -178,9 +258,10 @@ export const useChatsStore = defineStore('chats', () => {
 
   // ─────────────────────────── управление чатами ──────────────────────────
 
-  async function createChat(title?: string): Promise<ChatResponse | null> {
+  /** agentId не задан — чат достаётся встроенному агенту, это поведение нового чата по умолчанию. */
+  async function createChat(title?: string, agentId: string | null = null): Promise<ChatResponse | null> {
     try {
-      const chat = await chatsApi.createChat({ title, agentId: agents.value[0]?.id ?? null });
+      const chat = await chatsApi.createChat({ title, agentId });
       chats.value.unshift(chat);
       messagesByChat.value[chat.id] = [];
       return chat;
@@ -206,15 +287,21 @@ export const useChatsStore = defineStore('chats', () => {
     }
   }
 
-  async function setAgent(chatId: string, agentId: string): Promise<void> {
+  /**
+   * Меняет агента чата. Встроенный агент уезжает на бэкенд как null — идентификатора
+   * в БД у него нет.
+   */
+  async function setAgent(chatId: string, agentId: string | null): Promise<void> {
+    const next = agentId === BUILT_IN_AGENT_ID ? null : agentId;
+
     const chat = chats.value.find((c) => c.id === chatId);
-    if (!chat || chat.agentId === agentId) return;
+    if (!chat || chat.agentId === next) return;
 
     const previous = chat.agentId;
-    chat.agentId = agentId;
+    chat.agentId = next; // оптимистично
 
     try {
-      await chatsApi.updateChat(chatId, { agentId });
+      await chatsApi.setChatAgent(chatId, next);
     } catch (e) {
       chat.agentId = previous;
       toasts.error(describe(e, 'Не удалось сменить агента.'));
@@ -358,16 +445,35 @@ export const useChatsStore = defineStore('chats', () => {
       const final = await chatsApi.streamAssistantMessage(
         chatId,
         messageId,
-        (delta) => {
-          message.content += delta;
+        {
+          onDelta: (delta) => {
+            message.content += delta;
+          },
+
+          onToolCallStarted: (toolCall) => {
+            (message.toolCalls ??= []).push({ ...toolCall, status: 'running' });
+          },
+
+          onToolCallCompleted: (toolCallId, error) => {
+            const call = message.toolCalls?.find((c) => c.id === toolCallId);
+            if (!call) return;
+
+            call.status = error ? 'failed' : 'done';
+            call.error = error;
+          },
         },
         streamController.signal,
       );
 
       message.content = final.content;
       message.status = 'complete';
+      // Финальное сообщение приходит из БД, где вызовов инструментов нет, — сохраняем те,
+      // что накопили по ходу стрима, иначе они пропадут ровно в момент завершения ответа.
+      finishPendingToolCalls(message);
       touchChat(chatId, final.content);
     } catch (e) {
+      finishPendingToolCalls(message);
+
       if (e instanceof DOMException && e.name === 'AbortError') {
         message.status = 'complete';
       } else {
@@ -423,6 +529,8 @@ export const useChatsStore = defineStore('chats', () => {
     // state
     chats,
     agents,
+    skills,
+    agentsLoading,
     messagesByChat,
     drafts,
     activeChatId,
@@ -436,6 +544,7 @@ export const useChatsStore = defineStore('chats', () => {
 
     // computed
     activeChat,
+    allAgents,
     activeMessages,
     activeDraft,
     groupedChats,
@@ -446,6 +555,10 @@ export const useChatsStore = defineStore('chats', () => {
     init,
     loadChats,
     loadAgents,
+    loadSkills,
+    createAgent,
+    updateAgent,
+    deleteAgent,
     selectChat,
     createChat,
     renameChat,
@@ -460,6 +573,16 @@ export const useChatsStore = defineStore('chats', () => {
     agentById,
   };
 });
+
+/**
+ * Снимает статус «выполняется» с вызовов, для которых так и не пришло завершение:
+ * генерацию оборвали или соединение отвалилось. Иначе спиннер крутился бы вечно.
+ */
+function finishPendingToolCalls(message: MessageResponse): void {
+  for (const call of message.toolCalls ?? []) {
+    if (call.status === 'running') call.status = 'done';
+  }
+}
 
 function byUpdatedDesc(a: ChatResponse, b: ChatResponse): number {
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();

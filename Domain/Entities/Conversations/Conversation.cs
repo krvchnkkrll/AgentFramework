@@ -16,7 +16,21 @@ public sealed class Conversation : Entity
     public bool IsPinned { get; private set; }
     public bool HasError { get; private set; }
     public string? ErrorMessage { get; private set; }
-    
+
+    /// <summary>
+    /// Агент, который отвечает в этом чате. Пусто — отвечает встроенный агент из конфигурации
+    /// приложения, именно его получает любой новый чат.
+    /// </summary>
+    public Guid? AgentId { get; private set; }
+
+    /// <summary>
+    /// Состояние сессии агента в виде JSON: сжатая история, todo-лист, текущий режим и выданные
+    /// подтверждения инструментов. Это «взгляд модели» на разговор, а не сама переписка —
+    /// переписка лежит в <see cref="Messages"/> и остаётся источником правды для пользователя.
+    /// </summary>
+    public string? AgentState { get; private set; }
+
+
     public IReadOnlyCollection<Message> Messages => _messages.AsReadOnly();
 
     private Conversation()
@@ -39,7 +53,11 @@ public sealed class Conversation : Entity
             throw new ArgumentException("Conversation must belong to a user.", nameof(parameter));
 
         var now = DateTimeOffset.UtcNow;
-        return new Conversation(Guid.CreateVersion7(), parameter.UserId, NormalizeTitle(parameter.Title), now);
+
+        return new Conversation(Guid.CreateVersion7(), parameter.UserId, NormalizeTitle(parameter.Title), now)
+        {
+            AgentId = parameter.AgentId,
+        };
     }
 
     public void Rename(string title)
@@ -99,5 +117,35 @@ public sealed class Conversation : Entity
     {
         HasError = true;
         ErrorMessage = error;
+    }
+
+    /// <summary>
+    /// Назначает чату агента. Состояние сессии при этом сбрасывается: в нём лежит контекст,
+    /// собранный прошлым агентом — с его промптом, скиллами и сжатой под него историей.
+    /// Подсовывать это новому агенту нельзя, он соберёт контекст заново из переписки.
+    /// </summary>
+    public void AssignAgent(Guid? agentId)
+    {
+        if (AgentId == agentId)
+            return;
+
+        AgentId = agentId;
+        AgentState = null;
+        Touch();
+    }
+
+    /// <summary>Сохраняет состояние сессии агента после очередного прогона.</summary>
+    public void SaveAgentState(string? state)
+    {
+        AgentState = string.IsNullOrWhiteSpace(state) ? null : state;
+    }
+
+    /// <summary>
+    /// Забывает состояние сессии. Нужно, когда переписку правят в обход агента — тогда
+    /// сессию проще собрать заново из истории, чем чинить рассинхрон.
+    /// </summary>
+    public void ResetAgentState()
+    {
+        AgentState = null;
     }
 }

@@ -10,12 +10,33 @@ import type {
   ChatResponse,
   CreateChatRequest,
   MessageResponse,
+  SaveAgentRequest,
   SendMessageRequest,
+  SkillResponse,
   UpdateChatRequest,
 } from './types';
 
 /** Колбэк, в который прилетают куски ответа ассистента. */
 export type DeltaHandler = (delta: string) => void;
+
+/** Вызов инструмента в том виде, в каком он приходит с сервера (без клиентского status). */
+export interface ToolCallEvent {
+  id: string;
+  name: string;
+  arguments: string | null;
+}
+
+/**
+ * Колбэки на события одной генерации. Обязателен только onDelta: остальное подписывается
+ * по желанию, поэтому мок может ничего не эмитить и всё продолжит работать.
+ */
+export interface StreamHandlers {
+  onDelta: DeltaHandler;
+  /** Агент начал вызывать инструмент — текста в этот момент ещё нет. */
+  onToolCallStarted?: (toolCall: ToolCallEvent) => void;
+  /** Инструмент отработал; error не пустой, если он упал. */
+  onToolCallCompleted?: (toolCallId: string, error: string | null) => void;
+}
 
 export interface SendMessageResult {
   /** Сообщение пользователя, каким его сохранил сервер. */
@@ -38,13 +59,13 @@ export interface ChatsApi {
   ): Promise<SendMessageResult>;
 
   /**
-   * Дочитывает ответ ассистента по кусочкам.
+   * Дочитывает ответ ассистента по кусочкам и сообщает о вызовах инструментов.
    * Возвращает финальное состояние сообщения.
    */
   streamAssistantMessage(
     chatId: string,
     messageId: string,
-    onDelta: DeltaHandler,
+    handlers: StreamHandlers,
     signal?: AbortSignal,
   ): Promise<MessageResponse>;
 
@@ -59,4 +80,16 @@ export interface ChatsApi {
   deleteAttachment(attachmentId: string, signal?: AbortSignal): Promise<void>;
 
   listAgents(signal?: AbortSignal): Promise<AgentResponse[]>;
+
+  /** Скиллы, из которых собирается агент. Список приходит с бэкенда, а не хранится на клиенте. */
+  listSkills(signal?: AbortSignal): Promise<SkillResponse[]>;
+
+  createAgent(request: SaveAgentRequest, signal?: AbortSignal): Promise<AgentResponse>;
+
+  updateAgent(agentId: string, request: SaveAgentRequest, signal?: AbortSignal): Promise<AgentResponse>;
+
+  deleteAgent(agentId: string, signal?: AbortSignal): Promise<void>;
+
+  /** Меняет агента чата. null — вернуть чат встроенному агенту. */
+  setChatAgent(chatId: string, agentId: string | null, signal?: AbortSignal): Promise<ChatResponse>;
 }

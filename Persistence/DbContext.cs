@@ -1,3 +1,4 @@
+using Domain.Entities.Agents;
 using Domain.Entities.Conversations;
 using Domain.Entities.Messages;
 using Domain.Entities.Users;
@@ -11,6 +12,7 @@ public sealed class DbContext(DbContextOptions<DbContext> options) : Microsoft.E
     public DbSet<User> Users => Set<User>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<Agent> Agents => Set<Agent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

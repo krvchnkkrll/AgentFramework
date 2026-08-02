@@ -21,7 +21,20 @@ public enum AssistantUpdateKindEnum
     Usage,
 
     /// <summary>Модель или инструмент вернули ошибку.</summary>
-    Error
+    Error,
+
+    /// <summary>
+    /// Агент хочет вызвать инструмент, требующий подтверждения пользователя, и ждёт ответа.
+    /// Генерация на этом останавливается.
+    /// </summary>
+    ApprovalRequired,
+
+    /// <summary>
+    /// Итоговое состояние сессии агента в виде JSON. Приходит последним событием стрима.
+    /// Его надо сохранить рядом с чатом и вернуть в следующем запросе — иначе агент забудет
+    /// сжатую историю, todo-лист, режим и выданные подтверждения.
+    /// </summary>
+    SessionState
 }
 
 /// <summary>
@@ -74,4 +87,16 @@ public sealed record AssistantStreamUpdate
 
     public static AssistantStreamUpdate ForError(string error) =>
         new() { Kind = AssistantUpdateKindEnum.Error, Error = error };
+
+    public static AssistantStreamUpdate ForApprovalRequired(string callId, string toolName, string? arguments) =>
+        new()
+        {
+            Kind = AssistantUpdateKindEnum.ApprovalRequired,
+            CallId = callId,
+            ToolName = toolName,
+            ToolArguments = arguments,
+        };
+
+    public static AssistantStreamUpdate ForSessionState(string state) =>
+        new() { Kind = AssistantUpdateKindEnum.SessionState, Text = state };
 }

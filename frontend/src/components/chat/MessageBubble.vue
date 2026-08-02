@@ -8,6 +8,7 @@ import { formatFullTimestamp, formatTimestamp } from '@/utils/format';
 import { renderMarkdown } from '@/utils/markdown';
 
 import AttachmentChip from './AttachmentChip.vue';
+import ToolCallList from './ToolCallList.vue';
 
 const props = defineProps<{
   message: MessageResponse;
@@ -65,6 +66,12 @@ async function copy(): Promise<void> {
       </header>
 
       <div class="message__bubble">
+        <!--
+          Инструменты идут над текстом: агент вызывает их до того, как начнёт отвечать,
+          и без этой плашки пауза в несколько десятков секунд выглядит зависанием.
+        -->
+        <ToolCallList v-if="!isUser && message.toolCalls?.length" :calls="message.toolCalls" />
+
         <!-- Текст пользователя: без markdown, переносы строк сохраняем через CSS -->
         <p v-if="isUser" class="message__plain">{{ message.content }}</p>
 

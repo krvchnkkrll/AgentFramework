@@ -38,6 +38,38 @@ interface MessageFailedPayload {
   error: string;
 }
 
+/** Форма Application.Contracts/Features/Chats/Responses/ToolCallResponse.cs. */
+export interface HubToolCall {
+  id: string;
+  name: string;
+  arguments: string | null;
+}
+
+interface ToolCallStartedPayload {
+  chatId: string;
+  messageId: string;
+  toolCall: HubToolCall;
+}
+
+interface ToolCallCompletedPayload {
+  chatId: string;
+  messageId: string;
+  toolCallId: string;
+  error: string | null;
+}
+
+/**
+ * Колбэки на события одной генерации. Обязателен только onDelta — остальное подписывается
+ * по желанию, чтобы мок и реальный клиент оставались взаимозаменяемыми.
+ */
+export interface StreamHandlers {
+  onDelta: (delta: string) => void;
+  /** Агент начал вызывать инструмент. Текста в этот момент ещё нет. */
+  onToolCallStarted?: (toolCall: HubToolCall) => void;
+  /** Инструмент отработал; error не пустой, если он упал. */
+  onToolCallCompleted?: (toolCallId: string, error: string | null) => void;
+}
+
 interface ChatRenamedPayload {
   chatId: string;
   title: string;
@@ -105,7 +137,7 @@ export async function waitForMessageStarted(chatId: string, timeoutMs = 10_000):
 export async function streamMessage(
   chatId: string,
   messageId: string,
-  onDelta: (delta: string) => void,
+  handlers: StreamHandlers,
   signal?: AbortSignal,
 ): Promise<HubMessageResponse> {
   const connection = await getConnection();
@@ -115,12 +147,24 @@ export async function streamMessage(
       connection.off('messageDelta', onDeltaReceived);
       connection.off('messageCompleted', onCompleted);
       connection.off('messageFailed', onFailed);
+      connection.off('toolCallStarted', onToolCallStarted);
+      connection.off('toolCallCompleted', onToolCallCompleted);
       signal?.removeEventListener('abort', onAbort);
     };
 
     function onDeltaReceived(payload: MessageDeltaPayload): void {
       if (payload.chatId !== chatId || payload.messageId !== messageId) return;
-      onDelta(payload.delta);
+      handlers.onDelta(payload.delta);
+    }
+
+    function onToolCallStarted(payload: ToolCallStartedPayload): void {
+      if (payload.chatId !== chatId || payload.messageId !== messageId) return;
+      handlers.onToolCallStarted?.(payload.toolCall);
+    }
+
+    function onToolCallCompleted(payload: ToolCallCompletedPayload): void {
+      if (payload.chatId !== chatId || payload.messageId !== messageId) return;
+      handlers.onToolCallCompleted?.(payload.toolCallId, payload.error);
     }
 
     function onCompleted(payload: MessageCompletedPayload): void {
@@ -144,6 +188,8 @@ export async function streamMessage(
     connection.on('messageDelta', onDeltaReceived);
     connection.on('messageCompleted', onCompleted);
     connection.on('messageFailed', onFailed);
+    connection.on('toolCallStarted', onToolCallStarted);
+    connection.on('toolCallCompleted', onToolCallCompleted);
     signal?.addEventListener('abort', onAbort);
   });
 }

@@ -5,4 +5,5 @@ public sealed record ChatSummaryResponse(
     string Title,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    bool IsPinned);
+    bool IsPinned,
+    Guid? AgentId);

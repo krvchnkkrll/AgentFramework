@@ -22,11 +22,100 @@ namespace Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Domain.Entities.Agents.Agent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("description");
+
+                    b.Property<float>("FrequencyPenalty")
+                        .HasColumnType("real")
+                        .HasColumnName("frequency_penalty");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("icon");
+
+                    b.Property<string>("Instructions")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)")
+                        .HasColumnName("instructions");
+
+                    b.Property<int>("MaxOutputTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_output_tokens");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("name");
+
+                    b.Property<float>("PresencePenalty")
+                        .HasColumnType("real")
+                        .HasColumnName("presence_penalty");
+
+                    b.Property<int>("ReasoningEffortEnum")
+                        .HasColumnType("integer")
+                        .HasColumnName("reasoning_effort_enum");
+
+                    b.Property<float>("Temperature")
+                        .HasColumnType("real")
+                        .HasColumnName("temperature");
+
+                    b.Property<int>("TopK")
+                        .HasColumnType("integer")
+                        .HasColumnName("top_k");
+
+                    b.Property<float>("TopP")
+                        .HasColumnType("real")
+                        .HasColumnName("top_p");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("_skills")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("skills");
+
+                    b.HasKey("Id")
+                        .HasName("pk_agents");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_agents_user_id");
+
+                    b.ToTable("agents", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Entities.Conversations.Conversation", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<Guid?>("AgentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agent_id");
+
+                    b.Property<string>("AgentState")
+                        .HasColumnType("json")
+                        .HasColumnName("agent_state");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -59,6 +148,9 @@ namespace Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_conversations");
+
+                    b.HasIndex("AgentId")
+                        .HasDatabaseName("ix_conversations_agent_id");
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_conversations_user_id");
@@ -137,8 +229,24 @@ namespace Persistence.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.Agents.Agent", b =>
+                {
+                    b.HasOne("Domain.Entities.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_agents_users_user_id");
+                });
+
             modelBuilder.Entity("Domain.Entities.Conversations.Conversation", b =>
                 {
+                    b.HasOne("Domain.Entities.Agents.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_conversations_agents_agent_id");
+
                     b.HasOne("Domain.Entities.Users.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")

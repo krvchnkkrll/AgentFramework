@@ -6,4 +6,5 @@ public sealed record ChatResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     bool IsPinned,
+    Guid? AgentId,
     IReadOnlyCollection<MessageResponse> Messages);

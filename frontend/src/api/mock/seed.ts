@@ -1,5 +1,5 @@
 /** Стартовые данные мок-слоя: несколько чатов с перепиской. */
-import type { AgentResponse, ChatResponse, MessageResponse } from '../types';
+import type { AgentResponse, ChatResponse, MessageResponse, SkillResponse } from '../types';
 
 const now = Date.now();
 const minutes = (n: number) => new Date(now - n * 60_000).toISOString();
@@ -7,25 +7,58 @@ const days = (n: number) => new Date(now - n * 86_400_000).toISOString();
 
 export const seedAgents: AgentResponse[] = [
   {
-    id: 'agent-general',
-    name: 'Универсальный',
-    description: 'Базовый ассистент без специализации',
-    icon: '✦',
-    builtIn: true,
-  },
-  {
     id: 'agent-coder',
     name: 'Код-ревьюер',
     description: 'Разбирает код, ищет баги, предлагает рефакторинг',
     icon: '⌘',
-    builtIn: true,
+    instructions:
+      '# Роль\n\nТы ревьюишь код на C# и TypeScript.\n\n' +
+      '- Сначала находи ошибки, потом уже стиль.\n' +
+      '- На каждое замечание показывай исправленный фрагмент.\n' +
+      '- Если код в порядке — так и скажи, не выдумывай замечаний.',
+    skills: ['dotnet-conventions'],
+    temperature: 0.3,
+    topP: 0.95,
+    topK: 40,
+    maxOutputTokens: 8192,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    reasoningEffortEnum: 'None',
+    createdAt: days(9),
+    updatedAt: days(2),
   },
   {
-    id: 'agent-analyst',
-    name: 'Аналитик',
-    description: 'Работает с документами и таблицами',
+    id: 'agent-dba',
+    name: 'DBA',
+    description: 'Ускоряет запросы к PostgreSQL',
     icon: '◈',
-    builtIn: true,
+    instructions: '# Роль\n\nТы разбираешь планы выполнения и подбираешь индексы.',
+    skills: ['postgres-review'],
+    temperature: 0.2,
+    topP: 0.9,
+    topK: 40,
+    maxOutputTokens: 4096,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    reasoningEffortEnum: 'None',
+    createdAt: days(4),
+    updatedAt: days(1),
+  },
+];
+
+/** Скиллы, которые бэкенд читает из папки Web/skills. */
+export const seedSkills: SkillResponse[] = [
+  {
+    name: 'postgres-review',
+    description:
+      'Разбор и ускорение SQL-запросов к PostgreSQL. Использовать, когда просят посмотреть '
+      + 'запрос, объяснить план выполнения, подобрать индекс.',
+  },
+  {
+    name: 'dotnet-conventions',
+    description:
+      'Правила написания кода в этом проекте на C# и .NET. Использовать при написании '
+      + 'и ревью кода бэкенда.',
   },
 ];
 
@@ -46,7 +79,7 @@ export const seedChats: ChatResponse[] = [
     updatedAt: minutes(220),
     lastMessagePreview: 'Public client + PKCE S256, secret не нужен.',
     pinned: false,
-    agentId: 'agent-general',
+    agentId: null,
   },
   {
     id: 'chat-3',
@@ -55,7 +88,7 @@ export const seedChats: ChatResponse[] = [
     updatedAt: days(1),
     lastMessagePreview: 'Начни с системного промпта, инструментов и модели.',
     pinned: false,
-    agentId: 'agent-general',
+    agentId: null,
   },
   {
     id: 'chat-4',
@@ -64,7 +97,7 @@ export const seedChats: ChatResponse[] = [
     updatedAt: days(3),
     lastMessagePreview: 'Выручка выросла на 12%, основной вклад — второй регион.',
     pinned: false,
-    agentId: 'agent-analyst',
+    agentId: null,
   },
   {
     id: 'chat-5',
@@ -139,7 +172,7 @@ create index ix_attachments_message_id on attachments (message_id);
       id: 'msg-2-2',
       chatId: 'chat-2',
       role: 'assistant',
-      agentId: 'agent-general',
+      agentId: null,
       content: `Для SPA — **public client** с Authorization Code Flow и PKCE.
 
 | Параметр | Значение |
@@ -170,7 +203,7 @@ Public client + PKCE S256, secret не нужен.`,
       id: 'msg-3-2',
       chatId: 'chat-3',
       role: 'assistant',
-      agentId: 'agent-general',
+      agentId: null,
       content: `Минимальный набор, с которого можно стартовать:
 
 - **Имя и иконка** — чтобы отличать агентов в списке.
@@ -208,7 +241,7 @@ Public client + PKCE S256, secret не нужен.`,
       id: 'msg-4-2',
       chatId: 'chat-4',
       role: 'assistant',
-      agentId: 'agent-analyst',
+      agentId: null,
       content:
         'Выручка выросла на 12% квартал к кварталу. Основной вклад дал второй регион (+31%), первый почти не изменился (+2%), третий просел на 4%.',
       createdAt: days(3),

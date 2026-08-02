@@ -29,6 +29,24 @@ export interface AttachmentResponse {
   url: string | null;
 }
 
+/** Что сейчас с вызовом инструмента. */
+export type ToolCallStatus = 'running' | 'done' | 'failed';
+
+/**
+ * Вызов инструмента агентом — 1:1 с Application.Contracts/.../Responses/ToolCallResponse.cs
+ * плюс status, который на клиенте выводится из пары событий toolCallStarted/toolCallCompleted.
+ *
+ * Живёт только на время генерации: бэкенд вызовы инструментов не сохраняет, поэтому после
+ * перезагрузки страницы они пропадут, а текст ответа останется.
+ */
+export interface ToolCallResponse {
+  id: string;
+  name: string;
+  arguments: string | null;
+  status: ToolCallStatus;
+  error?: string | null;
+}
+
 export interface MessageResponse {
   id: string;
   chatId: string;
@@ -37,6 +55,8 @@ export interface MessageResponse {
   createdAt: string;
   status: MessageStatus;
   attachments: AttachmentResponse[];
+  /** Инструменты, которые агент вызвал по ходу этого ответа. */
+  toolCalls?: ToolCallResponse[];
   /** Какой агент/модель отвечал. Пригодится, когда появится конструктор агентов. */
   agentId?: string | null;
   error?: string | null;
@@ -53,14 +73,57 @@ export interface ChatResponse {
   agentId: string | null;
 }
 
-/** Заглушка под будущий конструктор агентов. */
+/** Насколько усердно модель «думает» перед ответом. */
+export type ReasoningEffort = 'Default' | 'None' | 'Low' | 'Medium' | 'High';
+
+/** Скилл, доступный для выбора в конструкторе. Читается бэкендом из папок со скиллами. */
+export interface SkillResponse {
+  name: string;
+  description: string;
+}
+
+/**
+ * Агент из конструктора — 1:1 с Application.Contracts/Features/Agents/Responses/AgentResponse.cs.
+ *
+ * Встроенный агент сюда не приходит: он живёт в конфигурации бэкенда и не редактируется.
+ * На клиенте он представлен константой BUILT_IN_AGENT с builtIn: true.
+ */
 export interface AgentResponse {
   id: string;
   name: string;
-  description: string;
+  description: string | null;
   /** Эмодзи или инициал для аватарки. */
-  icon: string;
-  builtIn: boolean;
+  icon: string | null;
+  /** Системный промпт в Markdown. */
+  instructions: string | null;
+  skills: string[];
+  temperature: number;
+  topP: number;
+  topK: number;
+  maxOutputTokens: number;
+  frequencyPenalty: number;
+  presencePenalty: number;
+  reasoningEffortEnum: ReasoningEffort;
+  createdAt: string;
+  updatedAt: string;
+  /** true только у псевдоагента, изображающего встроенного. Его нельзя править и удалять. */
+  builtIn?: boolean;
+}
+
+/** Тело POST /api/agents и PUT /api/agents/{id} — форма конструктора целиком. */
+export interface SaveAgentRequest {
+  name: string;
+  description: string | null;
+  icon: string | null;
+  instructions: string | null;
+  skills: string[];
+  temperature: number;
+  topP: number;
+  topK: number;
+  maxOutputTokens: number;
+  frequencyPenalty: number;
+  presencePenalty: number;
+  reasoningEffortEnum: ReasoningEffort;
 }
 
 /** Тело POST /api/chats */

@@ -45,6 +45,7 @@ public static class DependencyInjection
 
         builder.Services.AddScoped<IUserRepository, UserRepository>();
         builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
+        builder.Services.AddScoped<IAgentRepository, AgentRepository>();
 
         return builder;
     }

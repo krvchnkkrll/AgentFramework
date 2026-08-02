@@ -9,8 +9,12 @@
         <!--
           MEAI001  — чат-редьюсеры Microsoft.Extensions.AI помечены как experimental.
           OPENAI001 — клиент Responses API (нужен для Yandex AI Studio) тоже помечен как experimental.
+          MAAI001  — почти весь «взрослый» Microsoft Agent Framework: компакция, скиллы, todo,
+                     режимы, файловые сторы, аппрувы инструментов, LoopAgent. Это не превью-пакет,
+                     а помеченные [Experimental] API внутри стабильного — сигнатуры могут поехать
+                     между минорными версиями, поэтому обновлять пакет нужно осознанно.
         -->
-        <NoWarn>$(NoWarn);MEAI001;OPENAI001</NoWarn>
+        <NoWarn>$(NoWarn);MEAI001;OPENAI001;MAAI001</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
