@@ -193,10 +193,15 @@ onMounted(() => {
         </button>
       </div>
 
+      <!--
+        Пока принимаются только текстовые файлы: бэкенд читает их как текст и кладёт в память.
+        Двоичные форматы (pdf, docx) потребуют извлечения текста — этого ещё нет.
+      -->
       <input
         ref="fileInput"
         type="file"
         multiple
+        accept=".txt,.md,.csv,.log,.json,.xml,.yaml,.yml,text/plain"
         class="visually-hidden"
         @change="onFilesPicked"
       />

@@ -95,7 +95,7 @@ public sealed class OpenSearchTextSearchClient(
             multi_match = new
             {
                 query,
-                fields = Options.Fields,
+                fields = Options.Fields.Count > 0 ? Options.Fields : SearchOptions.DefaultFields,
                 type = "best_fields",
             },
         },

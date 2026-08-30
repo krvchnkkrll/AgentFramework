@@ -3,9 +3,13 @@ using System.Net.Http.Headers;
 using System.Text;
 using Assistant.Agents;
 using Assistant.Contracts;
+using Assistant.Contracts.Documents;
+using Assistant.Contracts.Workflows;
+using Assistant.Documents;
 using Assistant.Options;
 using Assistant.Search;
 using Assistant.Skills;
+using Assistant.Workflows;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,8 +48,17 @@ public static class DependencyInjections
         builder.AddOpenSearch();
 
         builder.Services.AddSingleton<ProcessSkillScriptRunner>();
+
+        // Документы живут в памяти процесса — это временно, под эксперимент.
+        builder.Services.AddSingleton<InMemoryDocumentStore>();
+        builder.Services.AddSingleton<IDocumentStore>(sp => sp.GetRequiredService<InMemoryDocumentStore>());
         builder.Services.AddSingleton<DefaultAgent>();
         builder.Services.AddSingleton<IAssistantAgent>(sp => sp.GetRequiredService<DefaultAgent>());
+
+        // Стенд для замера мультиагентного сценария. К обычному чату отношения не имеет:
+        // собственные агенты, собственные инструменты-заглушки, отдельная точка входа.
+        builder.Services.AddSingleton<CorporateApi>();
+        builder.Services.AddSingleton<IDocumentWorkflow, DocumentWorkflow>();
 
         return builder;
     }

@@ -22,7 +22,9 @@
  *   DELETE /api/chats/{chatId}
  *   POST   /api/chats/{chatId}/stop
  *   GET    /api/chats/{chatId}/messages
- *   POST   /api/chats/{chatId}/messages    { text }
+ *   POST   /api/chats/{chatId}/messages    { text, attachmentIds }
+ *   POST   /api/attachments                 multipart, только текстовые файлы
+ *   DELETE /api/attachments/{id}
  *   WS     /hubs/chat                      messageStarted/messageDelta/messageCompleted/
  *                                          messageFailed/chatRenamed/
  *                                          toolCallStarted/toolCallCompleted
@@ -34,7 +36,8 @@
  *   GET    /api/agents/skills
  *   PUT    /api/chats/{chatId}/agent      { agentId }
  *
- * Ещё не реализованы на бэкенде (деградируют мягко через ApiError.isNotImplemented): вложения.
+ * Вложения пока живут в памяти процесса бэкенда: ни БД, ни объектного хранилища за ними нет,
+ * после перезапуска приложения они пропадают.
  */
 import type { ChatsApi, SendMessageResult, StreamHandlers } from './contract';
 import { ApiError, request } from './http';
@@ -200,10 +203,10 @@ export const realChatsApi: ChatsApi = {
     await joinChat(chatId);
     const startedPromise = waitForMessageStarted(chatId);
 
-    // attachmentIds игнорируются: вложений на бэкенде ещё нет.
     const userMessage = await request<BackendMessageResponse>(`/api/chats/${chatId}/messages`, {
       method: 'POST',
-      json: { text: body.content },
+      // Именно здесь загруженные документы привязываются к чату и становятся видны агенту.
+      json: { text: body.content, attachmentIds: body.attachmentIds },
       signal,
     }).then((message) => mapMessage(message, chatId));
 

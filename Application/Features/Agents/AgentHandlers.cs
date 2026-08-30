@@ -35,15 +35,15 @@ file sealed class GetAgentsQueryHandler(
 /// скиллы кладут в папку, а не заводят в интерфейсе.
 /// </summary>
 file sealed class GetSkillsQueryHandler(IAssistantAgent assistantAgent)
-    : IRequestHandler<GetSkillsQuery, Result<IReadOnlyCollection<SkillResponse>>>
+    : IRequestHandler<GetSkillsQuery, Result<HashSet<SkillResponse>>>
 {
-    public async Task<Result<IReadOnlyCollection<SkillResponse>>> Handle(
+    public async Task<Result<HashSet<SkillResponse>>> Handle(
         GetSkillsQuery request,
         CancellationToken cancellationToken)
     {
         var skills = await assistantAgent.GetAvailableSkillsAsync(cancellationToken);
 
-        return Result.Success<IReadOnlyCollection<SkillResponse>>(
+        return Result.Success<HashSet<SkillResponse>>(
         [
             .. skills.Select(skill => new SkillResponse
             {

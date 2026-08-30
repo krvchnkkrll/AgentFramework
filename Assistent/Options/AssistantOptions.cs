@@ -30,6 +30,9 @@ public sealed class AssistantOptions
     /// <summary>Скиллы: папки со SKILL.md, которые агент подгружает по требованию.</summary>
     public SkillsOptions Skills { get; init; } = new();
 
+    /// <summary>Встроенные инструменты агента.</summary>
+    public ToolsOptions Tools { get; init; } = new();
+
     /// <summary>Todo-лист агента для длинных задач.</summary>
     public TodoOptions Todo { get; init; } = new();
 
@@ -47,6 +50,9 @@ public sealed class AssistantOptions
 
     /// <summary>RAG поверх OpenSearch.</summary>
     public SearchOptions Search { get; init; } = new();
+
+    /// <summary>Стенд мультиагентного сценария «подготовь документ» с замером времени.</summary>
+    public WorkflowOptions Workflow { get; init; } = new();
 
     /// <summary>Телеметрия OpenTelemetry для прогонов агента.</summary>
     public bool EnableOpenTelemetry { get; init; }

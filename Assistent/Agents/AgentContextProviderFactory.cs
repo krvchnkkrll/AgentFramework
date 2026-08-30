@@ -1,5 +1,6 @@
 using Assistant.Compaction;
 using Assistant.Contracts.Models;
+using Assistant.Documents;
 using Assistant.Options;
 using Assistant.Search;
 using Assistant.Skills;
@@ -31,7 +32,8 @@ internal static class AgentContextProviderFactory
 {
     /// <param name="definition">
     /// Агент из конструктора или null для встроенного. От него зависит только набор скиллов:
-    /// остальные провайдеры общие для всех агентов и настраиваются в appsettings.
+    /// у встроенного их нет вообще, у своего — ровно отмеченные в конструкторе. Остальные
+    /// провайдеры общие для всех агентов и настраиваются в appsettings.
     /// </param>
     public static AgentProviderSet Create(
         AssistantOptions options,
@@ -39,10 +41,19 @@ internal static class AgentContextProviderFactory
         IChatClient chatClient,
         OpenSearchTextSearchClient? searchClient,
         ProcessSkillScriptRunner? scriptRunner,
+        InMemoryDocumentStore? documentStore,
         ILoggerFactory loggerFactory)
     {
         var providers = new List<AIContextProvider>();
         var descriptions = new List<string>();
+
+        // Инструменты документов выдаются на каждый прогон и только если к чату что-то приложено,
+        // поэтому провайдер добавляется всегда — решение принимает он сам.
+        if (documentStore is not null)
+        {
+            providers.Add(new DocumentToolsProvider(documentStore));
+            descriptions.Add("документы: по требованию");
+        }
 
         AddCompaction(options, chatClient, loggerFactory, providers, descriptions);
         AddSkills(options, definition, scriptRunner, loggerFactory, providers, descriptions);
@@ -99,13 +110,15 @@ internal static class AgentContextProviderFactory
         if (directories.Length == 0)
             return;
 
-        // У агента из конструктора набор скиллов задан явно. Пустой список — это не «все»,
-        // а осознанный выбор пользователя не давать агенту скиллов вовсе.
-        var allowed = definition is null
-            ? null
-            : new HashSet<string>(definition.Skills, StringComparer.OrdinalIgnoreCase);
+        // Скиллы есть только у агентов из конструктора и только те, что там отмечены.
+        //
+        // У встроенного агента (definition == null) скиллов нет по определению: он универсальный
+        // и ничего специфического уметь не должен — за специализацию отвечают агенты, которые
+        // пользователь собирает сам. Пустой список у своего агента — то же самое: осознанный
+        // выбор не давать ему скиллов.
+        var allowed = new HashSet<string>(definition?.Skills ?? [], StringComparer.OrdinalIgnoreCase);
 
-        if (allowed is { Count: 0 })
+        if (allowed.Count == 0)
             return;
 
         var builder = new AgentSkillsProviderBuilder()
@@ -126,14 +139,11 @@ internal static class AgentContextProviderFactory
             ? scriptRunner.AsRunner()
             : ProcessSkillScriptRunner.Disabled);
 
-        if (allowed is not null)
-            builder = builder.UseFilter((skill, _) => allowed.Contains(skill.Frontmatter.Name));
+        builder = builder.UseFilter((skill, _) => allowed.Contains(skill.Frontmatter.Name));
 
         providers.Add(builder.Build());
 
-        descriptions.Add(allowed is null
-            ? $"скиллы: все из {string.Join(", ", directories)}"
-            : $"скиллы: {string.Join(", ", allowed)}");
+        descriptions.Add($"скиллы: {string.Join(", ", allowed)}");
     }
 
     /// <summary>Папки со скиллами, которые реально существуют. Отсутствующие молча пропускаем.</summary>
@@ -151,8 +161,11 @@ internal static class AgentContextProviderFactory
             ? options.Skills.ScriptExtensions
             : null,
 
-        // Скрипты выключены — не находим их вовсе, чтобы модели не предлагался
-        // инструмент run_skill_script, которым всё равно нельзя воспользоваться.
+        // Скрипты выключены — не обнаруживаем их вовсе, чтобы ни один скилл не мог ничего
+        // запустить. Сам инструмент run_skill_script модели всё равно предлагается: провайдер
+        // регистрирует свои три инструмента независимо от того, есть ли у скиллов скрипты.
+        // Вреда нет — запускать нечего, а раннер подменён заглушкой; но одно лишнее описание
+        // в промпте это стоит.
         ScriptFilter = options.Skills.AllowScripts ? null : _ => false,
     };
 
@@ -179,20 +192,18 @@ internal static class AgentContextProviderFactory
         List<AIContextProvider> providers,
         List<string> descriptions)
     {
-        if (!options.Modes.Enabled || options.Modes.Modes.Count == 0)
+        if (!options.Modes.Enabled)
             return;
+
+        var modes = options.Modes.Modes.Count > 0 ? options.Modes.Modes : ModesOptions.Default;
 
         providers.Add(new AgentModeProvider(new AgentModeProviderOptions
         {
             DefaultMode = options.Modes.DefaultMode,
-            Modes =
-            [
-                .. options.Modes.Modes.Select(mode =>
-                    new AgentModeProviderOptions.AgentMode(mode.Name, mode.Instructions)),
-            ],
+            Modes = [.. modes.Select(mode => new AgentModeProviderOptions.AgentMode(mode.Name, mode.Instructions))],
         }));
 
-        descriptions.Add($"режимы: {string.Join("/", options.Modes.Modes.Select(mode => mode.Name))}");
+        descriptions.Add($"режимы: {string.Join("/", modes.Select(mode => mode.Name))}");
     }
 
     /// <summary>

@@ -12,8 +12,14 @@ public sealed class SkillsOptions
     /// <summary>
     /// Папки, в которых лежат скиллы. Относительные пути считаются от рабочей директории процесса
     /// (для Web это папка с Web.csproj при запуске из IDE).
+    ///
+    /// По умолчанию пусто, а не ["skills"], и это принципиально: пустой JSON-массив не порождает
+    /// ни одного ключа конфигурации, поэтому "Directories": [] для биндера неотличимо от
+    /// отсутствующего ключа — он просто оставит значение по умолчанию. Был бы дефолт непустым,
+    /// выключить скиллы через пустой список стало бы невозможно: в appsettings пишешь «пусто»,
+    /// а получаешь дефолт. Реальный список живёт в appsettings.
     /// </summary>
-    public IReadOnlyList<string> Directories { get; init; } = ["skills"];
+    public IReadOnlyList<string> Directories { get; init; } = [];
 
     /// <summary>
     /// Разрешить скиллам иметь скрипты и дать модели инструмент run_skill_script.
@@ -29,6 +35,19 @@ public sealed class SkillsOptions
 
     /// <summary>Глубина обхода папки скилла в поисках ресурсов и скриптов.</summary>
     public int SearchDepth { get; init; } = 3;
+}
+
+/// <summary>Встроенные инструменты агента.</summary>
+public sealed class ToolsOptions
+{
+    /// <summary>
+    /// Искусственная задержка ответа инструментов, в секундах. 0 — выключено.
+    ///
+    /// Только для демонстраций: встроенные инструменты отрабатывают мгновенно, и увидеть
+    /// в интерфейсе плашку «агент вызывает get_current_time» на них невозможно. Задержка
+    /// слушает токен отмены, поэтому кнопка «стоп» продолжает работать.
+    /// </summary>
+    public int SimulatedDelaySeconds { get; init; }
 }
 
 /// <summary>Todo-лист агента: модель сама ведёт список подзадач по ходу длинной работы.</summary>
@@ -50,7 +69,17 @@ public sealed class ModesOptions
 
     public string DefaultMode { get; init; } = "execute";
 
-    public IReadOnlyList<AgentModeOption> Modes { get; init; } =
+    /// <summary>
+    /// Список режимов. Пусто — берутся <see cref="Default"/>.
+    ///
+    /// Дефолт здесь обязан быть пустым: биндер конфигурации не заменяет непустую коллекцию,
+    /// а дописывает к ней значения из JSON. С непустым дефолтом два режима из appsettings
+    /// превратились бы в четыре — два своих и два вшитых.
+    /// </summary>
+    public IReadOnlyList<AgentModeOption> Modes { get; init; } = [];
+
+    /// <summary>Режимы по умолчанию, если в конфигурации ничего не задано.</summary>
+    public static IReadOnlyList<AgentModeOption> Default { get; } =
     [
         new()
         {
@@ -147,8 +176,15 @@ public sealed class SearchOptions
 
     public string? Password { get; init; }
 
-    /// <summary>Поля, по которым идёт полнотекстовый поиск.</summary>
-    public IReadOnlyList<string> Fields { get; init; } = ["title^2", "content"];
+    /// <summary>
+    /// Поля, по которым идёт полнотекстовый поиск. Пусто — берутся <see cref="DefaultFields"/>.
+    /// Дефолт пустой по той же причине, что и у режимов: биндер дописывает к непустой коллекции,
+    /// а не заменяет её.
+    /// </summary>
+    public IReadOnlyList<string> Fields { get; init; } = [];
+
+    /// <summary>Поля поиска по умолчанию, если в конфигурации ничего не задано.</summary>
+    public static IReadOnlyList<string> DefaultFields { get; } = ["title^2", "content"];
 
     /// <summary>Поле документа, из которого берётся текст для модели.</summary>
     public string TextField { get; init; } = "content";

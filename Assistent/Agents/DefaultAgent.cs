@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Assistant.Contracts;
 using Assistant.Contracts.Models;
+using Assistant.Documents;
 using Assistant.Options;
 using Assistant.Prompts;
 using Assistant.Search;
@@ -40,7 +41,8 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
         IOptions<AssistantOptions> options,
         ILoggerFactory loggerFactory,
         OpenSearchTextSearchClient? searchClient = null,
-        ProcessSkillScriptRunner? scriptRunner = null)
+        ProcessSkillScriptRunner? scriptRunner = null,
+        InMemoryDocumentStore? documentStore = null)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentNullException.ThrowIfNull(options);
@@ -48,7 +50,8 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
 
         _options = options.Value;
         _logger = loggerFactory.CreateLogger<DefaultAgent>();
-        _factory = new AgentRuntimeFactory(chatClient, options, loggerFactory, searchClient, scriptRunner);
+        _factory = new AgentRuntimeFactory(
+            chatClient, options, loggerFactory, searchClient, scriptRunner, documentStore);
         _skillCatalog = new SkillCatalog(_options, loggerFactory);
 
         _titleAgent = new ChatClientAgent(

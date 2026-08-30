@@ -39,7 +39,7 @@ public sealed record SaveAgentRequest
 
 public sealed record GetAgentsQuery : IRequest<Result<IReadOnlyCollection<AgentResponse>>>;
 
-public sealed record GetSkillsQuery : IRequest<Result<IReadOnlyCollection<SkillResponse>>>;
+public sealed record GetSkillsQuery : IRequest<Result<HashSet<SkillResponse>>>;
 
 public sealed record CreateAgentCommand(SaveAgentRequest Body) : IRequest<Result<AgentResponse>>;
 

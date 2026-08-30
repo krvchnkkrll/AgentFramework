@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Assistant.Contracts.Models;
+using Assistant.Documents;
 using Assistant.Options;
 using Assistant.Prompts;
 using Assistant.Search;
@@ -37,13 +38,15 @@ internal sealed class AgentRuntimeFactory : IDisposable
     private readonly ILogger<AgentRuntimeFactory> _logger;
     private readonly OpenSearchTextSearchClient? _searchClient;
     private readonly ProcessSkillScriptRunner? _scriptRunner;
+    private readonly InMemoryDocumentStore? _documentStore;
 
     public AgentRuntimeFactory(
         IChatClient chatClient,
         IOptions<AssistantOptions> options,
         ILoggerFactory loggerFactory,
         OpenSearchTextSearchClient? searchClient = null,
-        ProcessSkillScriptRunner? scriptRunner = null)
+        ProcessSkillScriptRunner? scriptRunner = null,
+        InMemoryDocumentStore? documentStore = null)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentNullException.ThrowIfNull(options);
@@ -55,6 +58,7 @@ internal sealed class AgentRuntimeFactory : IDisposable
         _logger = loggerFactory.CreateLogger<AgentRuntimeFactory>();
         _searchClient = searchClient;
         _scriptRunner = scriptRunner;
+        _documentStore = documentStore;
     }
 
     public AssistantOptions Options => _options;
@@ -108,6 +112,7 @@ internal sealed class AgentRuntimeFactory : IDisposable
             _chatClient,
             _searchClient,
             _scriptRunner,
+            _documentStore,
             _loggerFactory);
 
         var chatAgent = new ChatClientAgent(
@@ -207,7 +212,8 @@ internal sealed class AgentRuntimeFactory : IDisposable
 
         return
         [
-            .. BuiltInTools.Create().Select(AITool (tool) => requireApproval.Contains(tool.Name)
+            .. BuiltInTools.Create(TimeSpan.FromSeconds(_options.Tools.SimulatedDelaySeconds))
+                .Select(AITool (tool) => requireApproval.Contains(tool.Name)
                 ? new ApprovalRequiredAIFunction(tool)
                 : tool),
         ];

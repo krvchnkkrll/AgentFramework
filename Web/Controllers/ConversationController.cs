@@ -147,7 +147,12 @@ public sealed class ConversationController(ISender sender) : AppController(sende
     public async Task<IActionResult> SendMessage(Guid id, SendMessageHttpBody body, CancellationToken cancellationToken)
     {
         var result = await Sender.Send(
-            new SendMessageCommand(new SendMessageRequest { ChatId = id, Text = body.Text }),
+            new SendMessageCommand(new SendMessageRequest
+            {
+                ChatId = id,
+                Text = body.Text,
+                AttachmentIds = body.AttachmentIds ?? [],
+            }),
             cancellationToken);
 
         return HandleResult(result);
@@ -156,6 +161,6 @@ public sealed class ConversationController(ISender sender) : AppController(sende
 
 public sealed record RenameChatHttpBody(string Title);
 
-public sealed record SendMessageHttpBody(string Text);
+public sealed record SendMessageHttpBody(string Text, IReadOnlyList<Guid>? AttachmentIds);
 
 public sealed record SetChatAgentHttpBody(Guid? AgentId);
