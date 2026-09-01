@@ -6,7 +6,9 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using Persistence.Contracts;
 using Persistence.Contracts.Repositories;
+using Persistence.Contracts.Storage;
 using Persistence.Repositories;
+using Persistence.Storage;
 
 namespace Persistence;
 
@@ -46,6 +48,12 @@ public static class DependencyInjection
         builder.Services.AddScoped<IUserRepository, UserRepository>();
         builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
         builder.Services.AddScoped<IAgentRepository, AgentRepository>();
+        builder.Services.AddScoped<ISkillRepository, SkillRepository>();
+
+        // Файловое хранилище. Локальная папка — временная реализация: под несколько узлов
+        // сюда нужно подставить объектное хранилище, больше нигде менять ничего не придётся.
+        builder.Services.AddOptions<FileStorageOptions>().BindConfiguration("FileStorage");
+        builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 
         return builder;
     }

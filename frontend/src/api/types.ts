@@ -76,10 +76,23 @@ export interface ChatResponse {
 /** Насколько усердно модель «думает» перед ответом. */
 export type ReasoningEffort = 'Default' | 'None' | 'Low' | 'Medium' | 'High';
 
-/** Скилл, доступный для выбора в конструкторе. Читается бэкендом из папок со скиллами. */
+/**
+ * Скилл — zip с файлом SKILL.md внутри, загруженный пользователем. Карточка лежит в базе,
+ * сам архив — в файловом хранилище бэкенда, наружу он не отдаётся.
+ */
 export interface SkillResponse {
+  id: string;
+  /** Имя из frontmatter SKILL.md. Отдельно не редактируется. */
   name: string;
+  /** Описание из frontmatter — по нему модель решает, брать скилл в работу. */
   description: string;
+  sizeBytes: number;
+  /** В архиве есть скрипты. Запускать их бэкенд всё равно не даёт. */
+  hasScripts: boolean;
+  /** Общий скилл: заведён администратором, его нельзя ни перезалить, ни удалить. */
+  shared: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -96,7 +109,8 @@ export interface AgentResponse {
   icon: string | null;
   /** Системный промпт в Markdown. */
   instructions: string | null;
-  skills: string[];
+  /** Скиллы, выданные агенту, — карточками целиком, а не одними идентификаторами. */
+  skills: SkillResponse[];
   temperature: number;
   topP: number;
   topK: number;
@@ -116,7 +130,8 @@ export interface SaveAgentRequest {
   description: string | null;
   icon: string | null;
   instructions: string | null;
-  skills: string[];
+  /** Идентификаторы выбранных скиллов. */
+  skillIds: string[];
   temperature: number;
   topP: number;
   topK: number;

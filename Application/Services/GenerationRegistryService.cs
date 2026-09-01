@@ -458,8 +458,11 @@ internal sealed class GenerationRegistryService(
         if (conversation.AgentId is not { } agentId)
             return null;
 
+        // Скиллы обязательны: по ним ассистент разворачивает архивы и отбирает,
+        // что дать агенту.
         var agent = await context.Agents
             .AsNoTracking()
+            .Include(candidate => candidate.Skills)
             .FirstOrDefaultAsync(candidate => candidate.Id == agentId, CancellationToken.None);
 
         if (agent is not null)

@@ -4,6 +4,7 @@ using System.Text;
 using Assistant.Agents;
 using Assistant.Contracts;
 using Assistant.Contracts.Documents;
+using Assistant.Contracts.Skills;
 using Assistant.Contracts.Workflows;
 using Assistant.Documents;
 using Assistant.Options;
@@ -14,6 +15,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAI;
 
@@ -48,6 +50,15 @@ public static class DependencyInjections
         builder.AddOpenSearch();
 
         builder.Services.AddSingleton<ProcessSkillScriptRunner>();
+
+        // Кэш развёрнутых скиллов. ISkillPackageSource регистрирует приложение — без него
+        // воркспейс просто ничего не разворачивает, и агенты работают на локальных папках.
+        builder.Services.AddSingleton(sp => new SkillWorkspace(
+            sp.GetRequiredService<IOptions<AssistantOptions>>().Value,
+            sp.GetService<ISkillPackageSource>(),
+            sp.GetRequiredService<ILoggerFactory>()));
+
+        builder.Services.AddHostedService<SkillWorkspaceCleaner>();
 
         // Документы живут в памяти процесса — это временно, под эксперимент.
         builder.Services.AddSingleton<InMemoryDocumentStore>();

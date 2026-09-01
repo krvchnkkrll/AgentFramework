@@ -39,11 +39,13 @@ internal sealed class AgentRuntimeFactory : IDisposable
     private readonly OpenSearchTextSearchClient? _searchClient;
     private readonly ProcessSkillScriptRunner? _scriptRunner;
     private readonly InMemoryDocumentStore? _documentStore;
+    private readonly SkillWorkspace _skillWorkspace;
 
     public AgentRuntimeFactory(
         IChatClient chatClient,
         IOptions<AssistantOptions> options,
         ILoggerFactory loggerFactory,
+        SkillWorkspace skillWorkspace,
         OpenSearchTextSearchClient? searchClient = null,
         ProcessSkillScriptRunner? scriptRunner = null,
         InMemoryDocumentStore? documentStore = null)
@@ -51,11 +53,13 @@ internal sealed class AgentRuntimeFactory : IDisposable
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(loggerFactory);
+        ArgumentNullException.ThrowIfNull(skillWorkspace);
 
         _chatClient = chatClient;
         _options = options.Value;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<AgentRuntimeFactory>();
+        _skillWorkspace = skillWorkspace;
         _searchClient = searchClient;
         _scriptRunner = scriptRunner;
         _documentStore = documentStore;
@@ -64,25 +68,73 @@ internal sealed class AgentRuntimeFactory : IDisposable
     public AssistantOptions Options => _options;
 
     /// <summary>
-    /// Возвращает готовый агент. Для <paramref name="definition"/> = null — встроенный,
-    /// собранный целиком из appsettings.
+    /// Возвращает готовый агент, развернув перед этим его скиллы из файлового хранилища.
+    /// Для <paramref name="definition"/> = null — встроенный, собранный целиком из appsettings.
     /// </summary>
-    public AgentRuntime Get(AssistantAgentDefinition? definition)
+    public async Task<AgentRuntime> GetAsync(
+        AssistantAgentDefinition? definition,
+        CancellationToken cancellationToken = default)
+    {
+        var signature = BuildSkillsSignature(definition);
+
+        // Разворачивать скиллы имеет смысл только если агента придётся собирать заново:
+        // в готовом рантайме пути к папкам уже зашиты.
+        if (TryGetCached(definition, signature, out var cached))
+            return cached;
+
+        var directories = definition is null
+            ? []
+            : await _skillWorkspace.MaterializeAsync(definition.Skills, cancellationToken);
+
+        return Store(definition, signature, directories);
+    }
+
+    /// <summary>
+    /// Встроенный агент. Скиллов из хранилища у него нет, поэтому разворачивать нечего
+    /// и ждать не надо.
+    /// </summary>
+    public AgentRuntime GetBuiltIn() =>
+        TryGetCached(null, string.Empty, out var cached) ? cached : Store(null, string.Empty, []);
+
+    private bool TryGetCached(AssistantAgentDefinition? definition, string signature, out AgentRuntime runtime)
     {
         var key = definition?.Id ?? BuiltInAgentKey;
         var version = definition?.UpdatedAt ?? DateTimeOffset.MinValue;
 
-        if (_runtimes.TryGetValue(key, out var existing) && existing.Version >= version)
-            return existing;
+        if (_runtimes.TryGetValue(key, out var existing)
+            && existing.Version >= version
+            && string.Equals(existing.SkillsSignature, signature, StringComparison.Ordinal))
+        {
+            runtime = existing;
+            return true;
+        }
 
-        var rebuilt = Build(definition);
+        runtime = null!;
+        return false;
+    }
+
+    private AgentRuntime Store(
+        AssistantAgentDefinition? definition,
+        string signature,
+        IReadOnlyList<string> skillDirectories)
+    {
+        var key = definition?.Id ?? BuiltInAgentKey;
+        var version = definition?.UpdatedAt ?? DateTimeOffset.MinValue;
+
+        _runtimes.TryGetValue(key, out var existing);
+
+        var rebuilt = Build(definition, signature, skillDirectories);
 
         // Гонку двух параллельных сборок разруливаем просто: побеждает последняя записанная,
         // проигравшую освобождаем. Обе рабочие, так что кому именно достанется этот запрос — неважно.
         var stored = _runtimes.AddOrUpdate(
             key,
             rebuilt,
-            (_, current) => current.Version >= version ? current : rebuilt);
+            (_, current) =>
+                current.Version >= version
+                && string.Equals(current.SkillsSignature, signature, StringComparison.Ordinal)
+                    ? current
+                    : rebuilt);
 
         if (!ReferenceEquals(stored, rebuilt))
         {
@@ -90,10 +142,27 @@ internal sealed class AgentRuntimeFactory : IDisposable
             return stored;
         }
 
-        if (existing is not null)
+        if (existing is not null && !ReferenceEquals(existing, stored))
             existing.Dispose();
 
         return stored;
+    }
+
+    /// <summary>
+    /// Идентификаторы скиллов вместе с хэшами их содержимого, в устойчивом порядке.
+    /// Строка меняется и когда скиллы переставили в конструкторе, и когда перезалили
+    /// содержимое любого из них.
+    /// </summary>
+    private static string BuildSkillsSignature(AssistantAgentDefinition? definition)
+    {
+        if (definition is null || definition.Skills.Count == 0)
+            return string.Empty;
+
+        return string.Join(
+            '|',
+            definition.Skills
+                .OrderBy(skill => skill.Id)
+                .Select(skill => $"{skill.Id:N}:{skill.ContentHash}"));
     }
 
     /// <summary>Выбрасывает агента из кэша — например, когда его удалили в конструкторе.</summary>
@@ -103,12 +172,16 @@ internal sealed class AgentRuntimeFactory : IDisposable
             runtime.Dispose();
     }
 
-    private AgentRuntime Build(AssistantAgentDefinition? definition)
+    private AgentRuntime Build(
+        AssistantAgentDefinition? definition,
+        string skillsSignature,
+        IReadOnlyList<string> skillDirectories)
     {
         var tools = CreateTools();
         var providers = AgentContextProviderFactory.Create(
             _options,
             definition,
+            skillDirectories,
             _chatClient,
             _searchClient,
             _scriptRunner,
@@ -146,7 +219,8 @@ internal sealed class AgentRuntimeFactory : IDisposable
             agent,
             providers,
             [.. tools.Select(tool => tool.Name)],
-            definition?.UpdatedAt ?? DateTimeOffset.MinValue);
+            definition?.UpdatedAt ?? DateTimeOffset.MinValue,
+            skillsSignature);
     }
 
     private ChatOptions BuildChatOptions(AssistantAgentDefinition? definition, IReadOnlyList<AITool> tools)

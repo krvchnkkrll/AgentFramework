@@ -172,14 +172,50 @@ export const useChatsStore = defineStore('chats', () => {
     }
   }
 
-  /** Скиллы меняются только при деплое, поэтому грузим один раз и держим. */
-  async function loadSkills(): Promise<void> {
-    if (skills.value.length > 0) return;
+  /**
+   * Скиллы теперь заводит сам пользователь, поэтому список перечитывается по запросу:
+   * force нужен после загрузки или удаления.
+   */
+  async function loadSkills(force = false): Promise<void> {
+    if (skills.value.length > 0 && !force) return;
 
     try {
       skills.value = await chatsApi.listSkills();
     } catch {
       skills.value = [];
+    }
+  }
+
+  /** Загружает zip со скиллом. Имя и описание бэкенд достаёт из SKILL.md внутри архива. */
+  async function uploadSkill(file: File): Promise<SkillResponse | null> {
+    try {
+      const skill = await chatsApi.uploadSkill(file);
+      skills.value = [...skills.value, skill].sort((a, b) => a.name.localeCompare(b.name));
+      toasts.success(`Скилл «${skill.name}» загружен.`);
+      return skill;
+    } catch (e) {
+      toasts.error(describe(e, 'Не удалось загрузить скилл.'));
+      return null;
+    }
+  }
+
+  async function deleteSkill(skillId: string): Promise<boolean> {
+    const skill = skills.value.find((candidate) => candidate.id === skillId);
+
+    try {
+      await chatsApi.deleteSkill(skillId);
+      skills.value = skills.value.filter((candidate) => candidate.id !== skillId);
+
+      // Скилл пропадает и у агентов — на бэкенде связи уходят каскадом.
+      for (const agent of agents.value) {
+        agent.skills = agent.skills.filter((candidate) => candidate.id !== skillId);
+      }
+
+      toasts.success(`Скилл «${skill?.name ?? ''}» удалён.`);
+      return true;
+    } catch (e) {
+      toasts.error(describe(e, 'Не удалось удалить скилл.'));
+      return false;
     }
   }
 
@@ -556,6 +592,8 @@ export const useChatsStore = defineStore('chats', () => {
     loadChats,
     loadAgents,
     loadSkills,
+    uploadSkill,
+    deleteSkill,
     createAgent,
     updateAgent,
     deleteAgent,

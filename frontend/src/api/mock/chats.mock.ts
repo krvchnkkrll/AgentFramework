@@ -26,6 +26,7 @@ interface MockDb {
   chats: ChatResponse[];
   messages: Record<string, MessageResponse[]>;
   agents: AgentResponse[];
+  skills: SkillResponse[];
 }
 
 /** Вложения держим отдельно: blob:-ссылки живут только в текущей вкладке. */
@@ -44,6 +45,7 @@ function loadDb(): MockDb {
       // agents появились позже — у старых сохранений их нет, добираем из сидов.
       if (Array.isArray(parsed.chats) && parsed.messages) {
         parsed.agents ??= structuredClone(seedAgents);
+        parsed.skills ??= structuredClone(seedSkills);
         return parsed;
       }
     }
@@ -55,6 +57,7 @@ function loadDb(): MockDb {
     chats: structuredClone(seedChats),
     messages: structuredClone(seedMessages),
     agents: structuredClone(seedAgents),
+    skills: structuredClone(seedSkills),
   };
 }
 
@@ -64,6 +67,7 @@ function persist(): void {
     const serialisable: MockDb = {
       chats: db.chats,
       agents: db.agents,
+      skills: db.skills,
       messages: Object.fromEntries(
         Object.entries(db.messages).map(([chatId, list]) => [
           chatId,
@@ -331,18 +335,63 @@ export const mockChatsApi: ChatsApi = {
 
   async listSkills(): Promise<SkillResponse[]> {
     await delay(60);
-    return structuredClone(seedSkills);
+    return structuredClone(db.skills);
+  },
+
+  /**
+   * Мок не разбирает архив — просто заводит карточку по имени файла. На бэкенде имя
+   * и описание берутся из frontmatter внутри SKILL.md.
+   */
+  async uploadSkill(file: File): Promise<SkillResponse> {
+    await delay(240);
+
+    const name = file.name.replace(/\.zip$/i, '');
+
+    if (db.skills.some((skill) => skill.name === name)) {
+      throw new Error(`Скилл «${name}» уже загружен.`);
+    }
+
+    const now = new Date().toISOString();
+    const skill: SkillResponse = {
+      id: newId(),
+      name,
+      description: `Скилл, загруженный из ${file.name}.`,
+      sizeBytes: file.size,
+      hasScripts: false,
+      shared: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    db.skills.push(skill);
+    persist();
+
+    return structuredClone(skill);
+  },
+
+  async deleteSkill(skillId: string): Promise<void> {
+    await delay(150);
+
+    db.skills = db.skills.filter((skill) => skill.id !== skillId);
+
+    // Удалённый скилл пропадает и у агентов — на бэкенде это делает каскад.
+    for (const agent of db.agents) {
+      agent.skills = agent.skills.filter((skill) => skill.id !== skillId);
+    }
+
+    persist();
   },
 
   async createAgent(body: SaveAgentRequest): Promise<AgentResponse> {
     await delay(180);
 
     const now = new Date().toISOString();
-    // skills копируем отдельно: если вызывающий передал реактивный массив, в базе мока
-    // не должно осесть ничего, кроме обычных значений.
+    // Форма присылает идентификаторы, а наружу агент отдаётся с карточками скиллов —
+    // ровно как на бэкенде.
+    const { skillIds, ...rest } = body;
     const agent: AgentResponse = {
-      ...body,
-      skills: [...body.skills],
+      ...rest,
+      skills: resolveSkills(skillIds),
       id: newId(),
       createdAt: now,
       updatedAt: now,
@@ -360,7 +409,11 @@ export const mockChatsApi: ChatsApi = {
     const agent = db.agents.find((a) => a.id === agentId);
     if (!agent) throw new Error(`Агент ${agentId} не найден.`);
 
-    Object.assign(agent, body, { skills: [...body.skills], updatedAt: new Date().toISOString() });
+    const { skillIds, ...rest } = body;
+    Object.assign(agent, rest, {
+      skills: resolveSkills(skillIds),
+      updatedAt: new Date().toISOString(),
+    });
     persist();
 
     return structuredClone(agent);
@@ -393,10 +446,19 @@ export const mockChatsApi: ChatsApi = {
   },
 };
 
+/** Карточки выбранных скиллов по их идентификаторам. Несуществующие отбрасываются. */
+function resolveSkills(skillIds: string[]): SkillResponse[] {
+  return skillIds
+    .map((id) => db.skills.find((skill) => skill.id === id))
+    .filter((skill): skill is SkillResponse => skill !== undefined)
+    .map((skill) => structuredClone(skill));
+}
+
 /** Сбросить мок-данные к исходным. Вызывается из настроек. */
 export function resetMockDb(): void {
   localStorage.removeItem(STORAGE_KEY);
   db.chats = structuredClone(seedChats);
   db.messages = structuredClone(seedMessages);
+  db.skills = structuredClone(seedSkills);
   persist();
 }

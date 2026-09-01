@@ -20,7 +20,11 @@ public sealed record SaveAgentRequest
     /// <summary>Системный промпт в Markdown.</summary>
     public string? Instructions { get; init; }
 
-    public IReadOnlyList<string> Skills { get; init; } = [];
+    /// <summary>
+    /// Идентификаторы выбранных скиллов. Чужие молча отбрасываются — проверку делает
+    /// обработчик команды.
+    /// </summary>
+    public IReadOnlyList<Guid> SkillIds { get; init; } = [];
 
     public float Temperature { get; init; } = 0.7f;
 
@@ -38,8 +42,6 @@ public sealed record SaveAgentRequest
 }
 
 public sealed record GetAgentsQuery : IRequest<Result<IReadOnlyCollection<AgentResponse>>>;
-
-public sealed record GetSkillsQuery : IRequest<Result<HashSet<SkillResponse>>>;
 
 public sealed record CreateAgentCommand(SaveAgentRequest Body) : IRequest<Result<AgentResponse>>;
 

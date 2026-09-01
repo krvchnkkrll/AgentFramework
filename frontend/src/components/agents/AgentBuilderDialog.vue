@@ -28,7 +28,9 @@ const chats = useChatsStore();
 const form = ref<SaveAgentRequest>(emptyAgentForm());
 const saving = ref(false);
 const showPreview = ref(false);
+const uploadingSkill = ref(false);
 const nameInput = ref<HTMLInputElement | null>(null);
+const skillFileInput = ref<HTMLInputElement | null>(null);
 
 const isEditing = computed(() => props.agent !== null);
 const canSave = computed(() => form.value.name.trim().length > 0 && !saving.value);
@@ -59,12 +61,40 @@ watch(
 
 const instructionsHtml = computed(() => renderMarkdown(form.value.instructions ?? ''));
 
-function toggleSkill(name: string): void {
-  const skills = form.value.skills;
-  const index = skills.indexOf(name);
+function toggleSkill(skillId: string): void {
+  const selected = form.value.skillIds;
+  const index = selected.indexOf(skillId);
 
-  if (index === -1) skills.push(name);
-  else skills.splice(index, 1);
+  if (index === -1) selected.push(skillId);
+  else selected.splice(index, 1);
+}
+
+/**
+ * Загрузка скилла. Файл уходит на бэкенд как есть: имя и описание он берёт из frontmatter
+ * внутри SKILL.md, задавать их здесь нечем и не нужно.
+ */
+async function onSkillFilePicked(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+
+  // Сбрасываем сразу: иначе повторный выбор того же файла не вызовет change.
+  input.value = '';
+
+  if (!file) return;
+
+  uploadingSkill.value = true;
+  const skill = await chats.uploadSkill(file);
+  uploadingSkill.value = false;
+
+  // Только что загруженный скилл сразу отмечаем — за ним и загружали.
+  if (skill && !form.value.skillIds.includes(skill.id)) form.value.skillIds.push(skill.id);
+}
+
+async function removeSkill(skillId: string): Promise<void> {
+  if (!await chats.deleteSkill(skillId)) return;
+
+  const index = form.value.skillIds.indexOf(skillId);
+  if (index !== -1) form.value.skillIds.splice(index, 1);
 }
 
 /** Пустые строки уезжают на бэкенд как null — там это «не задано», а не «пустая строка». */
@@ -87,7 +117,7 @@ async function save(): Promise<void> {
     description: blankToNull(form.value.description),
     icon: blankToNull(form.value.icon),
     instructions: blankToNull(form.value.instructions),
-    skills: [...form.value.skills],
+    skillIds: [...form.value.skillIds],
   };
 
   const saved = props.agent
@@ -208,28 +238,56 @@ function onKeydown(event: KeyboardEvent): void {
               </p>
 
               <p v-if="chats.skills.length === 0" class="empty">
-                Скиллов не найдено. Их кладут папками с файлом SKILL.md туда, куда смотрит
-                бэкенд (по умолчанию — Web/skills).
+                Скиллов пока нет. Скилл — это папка с файлом SKILL.md, упакованная в zip;
+                имя и описание берутся из frontmatter внутри.
               </p>
 
               <ul v-else class="skills">
-                <li v-for="skill in chats.skills" :key="skill.name">
+                <li v-for="skill in chats.skills" :key="skill.id" class="skills__row">
                   <button
                     class="skill"
                     type="button"
-                    :class="{ 'skill--on': form.skills.includes(skill.name) }"
-                    @click="toggleSkill(skill.name)"
+                    :class="{ 'skill--on': form.skillIds.includes(skill.id) }"
+                    @click="toggleSkill(skill.id)"
                   >
                     <span class="skill__check">
-                      <AppIcon v-if="form.skills.includes(skill.name)" name="check" :size="12" />
+                      <AppIcon v-if="form.skillIds.includes(skill.id)" name="check" :size="12" />
                     </span>
                     <span class="skill__text">
                       <code class="skill__name">{{ skill.name }}</code>
                       <span class="skill__desc">{{ skill.description }}</span>
                     </span>
                   </button>
+
+                  <!-- Общие скиллы заводит администратор — удалять их отсюда нельзя. -->
+                  <button
+                    v-if="!skill.shared"
+                    class="skill__remove"
+                    type="button"
+                    title="Удалить скилл"
+                    @click="removeSkill(skill.id)"
+                  >
+                    <AppIcon name="trash" :size="14" />
+                  </button>
                 </li>
               </ul>
+
+              <div class="skills__upload">
+                <input
+                  ref="skillFileInput"
+                  type="file"
+                  accept=".zip"
+                  hidden
+                  @change="onSkillFilePicked"
+                />
+                <AppButton
+                  variant="ghost"
+                  :disabled="uploadingSkill"
+                  @click="skillFileInput?.click()"
+                >
+                  {{ uploadingSkill ? 'Загружаем…' : 'Загрузить скилл (zip)' }}
+                </AppButton>
+              </div>
             </section>
 
             <!-- ─────────── Параметры ─────────── -->
@@ -530,6 +588,36 @@ function onKeydown(event: KeyboardEvent): void {
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
   color: var(--text-muted);
+}
+
+.skills__row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.skills__row .skill {
+  flex: 1;
+}
+
+.skill__remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.skill__remove:hover {
+  color: var(--danger);
+}
+
+.skills__upload {
+  margin-top: 10px;
 }
 
 .skills {

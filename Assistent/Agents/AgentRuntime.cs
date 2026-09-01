@@ -12,7 +12,8 @@ internal sealed class AgentRuntime(
     AIAgent agent,
     AgentProviderSet providers,
     IReadOnlyList<string> toolNames,
-    DateTimeOffset version) : IDisposable
+    DateTimeOffset version,
+    string skillsSignature) : IDisposable
 {
     public AIAgent Agent { get; } = agent;
 
@@ -23,6 +24,15 @@ internal sealed class AgentRuntime(
     /// пользователь поправил агента в конструкторе, и рантайм пора пересобрать.
     /// </summary>
     public DateTimeOffset Version { get; } = version;
+
+    /// <summary>
+    /// Отпечаток набора скиллов: идентификаторы вместе с хэшами содержимого.
+    ///
+    /// Отдельно от <see cref="Version"/>, потому что содержимое скилла меняется не через
+    /// конструктор агента: загрузили новую версию скилла — UpdatedAt агента остался прежним,
+    /// а работать он должен уже с новым текстом.
+    /// </summary>
+    public string SkillsSignature { get; } = skillsSignature;
 
     public IReadOnlyList<string> Descriptions => providers.Descriptions;
 

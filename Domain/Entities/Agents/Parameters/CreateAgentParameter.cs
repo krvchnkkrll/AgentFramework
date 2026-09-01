@@ -1,3 +1,4 @@
+using Domain.Entities.Skills;
 using Domain.Enums;
 
 namespace Domain.Entities.Agents.Parameters;
@@ -17,8 +18,11 @@ public sealed record CreateAgentParameter
     /// <summary>Системный промпт в Markdown. Пусто — возьмётся встроенный.</summary>
     public string? Instructions { get; init; }
 
-    /// <summary>Имена скиллов, доступных этому агенту.</summary>
-    public IReadOnlyList<string> Skills { get; init; } = [];
+    /// <summary>
+    /// Скиллы, доступные этому агенту, — уже загруженные из базы сущности.
+    /// Проверку прав на них делает обработчик команды, а не домен.
+    /// </summary>
+    public IReadOnlyList<Skill> Skills { get; init; } = [];
 
     public AgentGenerationParameter Generation { get; init; } = new();
 }

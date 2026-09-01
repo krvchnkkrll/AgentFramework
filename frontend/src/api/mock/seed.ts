@@ -5,6 +5,37 @@ const now = Date.now();
 const minutes = (n: number) => new Date(now - n * 60_000).toISOString();
 const days = (n: number) => new Date(now - n * 86_400_000).toISOString();
 
+/** Скиллы, загруженные пользователем. На бэкенде это записи в БД со ссылкой на архив. */
+export const seedSkills: SkillResponse[] = [
+  {
+    id: 'skill-postgres-review',
+    name: 'postgres-review',
+    description:
+      'Разбор и ускорение SQL-запросов к PostgreSQL. Использовать, когда просят посмотреть '
+      + 'запрос, объяснить план выполнения, подобрать индекс.',
+    sizeBytes: 4_812,
+    hasScripts: false,
+    shared: false,
+    createdAt: days(12),
+    updatedAt: days(12),
+  },
+  {
+    id: 'skill-dotnet-conventions',
+    name: 'dotnet-conventions',
+    description:
+      'Правила написания кода в этом проекте на C# и .NET. Использовать при написании '
+      + 'и ревью кода бэкенда.',
+    sizeBytes: 2_140,
+    hasScripts: false,
+    shared: false,
+    createdAt: days(12),
+    updatedAt: days(5),
+  },
+];
+
+const skillByName = (name: string): SkillResponse =>
+  seedSkills.find((skill) => skill.name === name)!;
+
 export const seedAgents: AgentResponse[] = [
   {
     id: 'agent-coder',
@@ -16,7 +47,7 @@ export const seedAgents: AgentResponse[] = [
       '- Сначала находи ошибки, потом уже стиль.\n' +
       '- На каждое замечание показывай исправленный фрагмент.\n' +
       '- Если код в порядке — так и скажи, не выдумывай замечаний.',
-    skills: ['dotnet-conventions'],
+    skills: [skillByName('dotnet-conventions')],
     temperature: 0.3,
     topP: 0.95,
     topK: 40,
@@ -33,7 +64,7 @@ export const seedAgents: AgentResponse[] = [
     description: 'Ускоряет запросы к PostgreSQL',
     icon: '◈',
     instructions: '# Роль\n\nТы разбираешь планы выполнения и подбираешь индексы.',
-    skills: ['postgres-review'],
+    skills: [skillByName('postgres-review')],
     temperature: 0.2,
     topP: 0.9,
     topK: 40,
@@ -46,21 +77,6 @@ export const seedAgents: AgentResponse[] = [
   },
 ];
 
-/** Скиллы, которые бэкенд читает из папки Web/skills. */
-export const seedSkills: SkillResponse[] = [
-  {
-    name: 'postgres-review',
-    description:
-      'Разбор и ускорение SQL-запросов к PostgreSQL. Использовать, когда просят посмотреть '
-      + 'запрос, объяснить план выполнения, подобрать индекс.',
-  },
-  {
-    name: 'dotnet-conventions',
-    description:
-      'Правила написания кода в этом проекте на C# и .NET. Использовать при написании '
-      + 'и ревью кода бэкенда.',
-  },
-];
 
 export const seedChats: ChatResponse[] = [
   {

@@ -33,7 +33,7 @@
  *   POST   /api/agents
  *   PUT    /api/agents/{agentId}
  *   DELETE /api/agents/{agentId}
- *   GET    /api/agents/skills
+ *   GET    /api/skills
  *   PUT    /api/chats/{chatId}/agent      { agentId }
  *
  * Вложения пока живут в памяти процесса бэкенда: ни БД, ни объектного хранилища за ними нет,
@@ -262,7 +262,18 @@ export const realChatsApi: ChatsApi = {
   },
 
   listSkills(signal) {
-    return request<SkillResponse[]>('/api/agents/skills', { signal });
+    return request<SkillResponse[]>('/api/skills', { signal });
+  },
+
+  uploadSkill(file: File, signal?: AbortSignal): Promise<SkillResponse> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+
+    return request<SkillResponse>('/api/skills', { method: 'POST', body: form, signal });
+  },
+
+  deleteSkill(skillId: string, signal) {
+    return request<void>(`/api/skills/${skillId}`, { method: 'DELETE', signal });
   },
 
   createAgent(body: SaveAgentRequest, signal) {

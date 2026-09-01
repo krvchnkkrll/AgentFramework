@@ -81,8 +81,13 @@ export interface ChatsApi {
 
   listAgents(signal?: AbortSignal): Promise<AgentResponse[]>;
 
-  /** Скиллы, из которых собирается агент. Список приходит с бэкенда, а не хранится на клиенте. */
+  /** Скиллы, из которых собирается агент: загруженные пользователем плюс общие. */
   listSkills(signal?: AbortSignal): Promise<SkillResponse[]>;
+
+  /** Загружает новый скилл — zip с SKILL.md внутри. Имя и описание берутся из архива. */
+  uploadSkill(file: File, signal?: AbortSignal): Promise<SkillResponse>;
+
+  deleteSkill(skillId: string, signal?: AbortSignal): Promise<void>;
 
   createAgent(request: SaveAgentRequest, signal?: AbortSignal): Promise<AgentResponse>;
 

@@ -34,12 +34,12 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
     private readonly AIAgent _titleAgent;
     private readonly ILogger<DefaultAgent> _logger;
     private readonly AssistantOptions _options;
-    private readonly SkillCatalog _skillCatalog;
 
     public DefaultAgent(
         IChatClient chatClient,
         IOptions<AssistantOptions> options,
         ILoggerFactory loggerFactory,
+        SkillWorkspace skillWorkspace,
         OpenSearchTextSearchClient? searchClient = null,
         ProcessSkillScriptRunner? scriptRunner = null,
         InMemoryDocumentStore? documentStore = null)
@@ -47,12 +47,12 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(loggerFactory);
+        ArgumentNullException.ThrowIfNull(skillWorkspace);
 
         _options = options.Value;
         _logger = loggerFactory.CreateLogger<DefaultAgent>();
         _factory = new AgentRuntimeFactory(
-            chatClient, options, loggerFactory, searchClient, scriptRunner, documentStore);
-        _skillCatalog = new SkillCatalog(_options, loggerFactory);
+            chatClient, options, loggerFactory, skillWorkspace, searchClient, scriptRunner, documentStore);
 
         _titleAgent = new ChatClientAgent(
             chatClient,
@@ -78,15 +78,10 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
     /// Голый <see cref="AIAgent"/> встроенного агента — на случай, если понадобится что-то,
     /// чего нет в обёртке (обернуть в LoopAgent, воткнуть в воркфлоу).
     /// </summary>
-    public AIAgent Agent => _factory.Get(null).Agent;
+    public AIAgent Agent => _factory.GetBuiltIn().Agent;
 
     /// <summary>Имена собственных инструментов агента. Инструменты провайдеров сюда не входят.</summary>
-    public IReadOnlyList<string> ToolNames => _factory.Get(null).ToolNames;
-
-    /// <summary>Скиллы, доступные для выбора в конструкторе агента.</summary>
-    public Task<IReadOnlyList<AssistantSkillInfo>> GetAvailableSkillsAsync(
-        CancellationToken cancellationToken = default) =>
-        _skillCatalog.GetAsync(_factory.Get(null).Agent, cancellationToken);
+    public IReadOnlyList<string> ToolNames => _factory.GetBuiltIn().ToolNames;
 
     /// <summary>Выбрасывает агента из кэша — вызывается, когда его удалили или переписали.</summary>
     public void EvictAgent(Guid agentId) => _factory.Evict(agentId);
@@ -199,7 +194,8 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.UserText);
 
-        var agent = _factory.Get(request.Agent).Agent;
+        var runtime = await _factory.GetAsync(request.Agent, cancellationToken);
+        var agent = runtime.Agent;
         var session = await CreateSessionAsync(agent, request, cancellationToken);
 
         var updates = agent.RunStreamingAsync(request.UserText, session, options: null, cancellationToken);
@@ -261,7 +257,8 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.UserText);
 
-        var agent = _factory.Get(request.Agent).Agent;
+        var runtime = await _factory.GetAsync(request.Agent, cancellationToken);
+        var agent = runtime.Agent;
         var session = await CreateSessionAsync(agent, request, cancellationToken);
         var response = await agent.RunAsync(request.UserText, session, options: null, cancellationToken);
 
@@ -418,6 +415,5 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
     public void Dispose()
     {
         _factory.Dispose();
-        _skillCatalog.Dispose();
     }
 }

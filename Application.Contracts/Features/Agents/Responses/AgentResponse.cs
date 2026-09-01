@@ -1,3 +1,4 @@
+using Application.Contracts.Features.Skills.Responses;
 using Domain.Enums;
 
 namespace Application.Contracts.Features.Agents.Responses;
@@ -16,7 +17,8 @@ public sealed record AgentResponse
     /// <summary>Системный промпт в Markdown.</summary>
     public string? Instructions { get; init; }
 
-    public required IReadOnlyCollection<string> Skills { get; init; }
+    /// <summary>Скиллы, выданные агенту, — карточками, а не одними идентификаторами.</summary>
+    public required IReadOnlyCollection<SkillResponse> Skills { get; init; }
 
     public required float Temperature { get; init; }
 
@@ -35,12 +37,4 @@ public sealed record AgentResponse
     public required DateTimeOffset CreatedAt { get; init; }
 
     public required DateTimeOffset UpdatedAt { get; init; }
-}
-
-/// <summary>Скилл, доступный для выбора в конструкторе.</summary>
-public sealed record SkillResponse
-{
-    public required string Name { get; init; }
-
-    public required string Description { get; init; }
 }

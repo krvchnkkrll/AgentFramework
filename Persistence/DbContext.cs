@@ -1,6 +1,7 @@
 using Domain.Entities.Agents;
 using Domain.Entities.Conversations;
 using Domain.Entities.Messages;
+using Domain.Entities.Skills;
 using Domain.Entities.Users;
 using Microsoft.EntityFrameworkCore;
 using Persistence.Contracts;
@@ -13,6 +14,7 @@ public sealed class DbContext(DbContextOptions<DbContext> options) : Microsoft.E
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Agent> Agents => Set<Agent>();
+    public DbSet<Skill> Skills => Set<Skill>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -1,16 +1,13 @@
-using System.Text.Json;
 using Domain.Entities.Agents;
+using Domain.Entities.Skills;
 using Domain.Entities.Users;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Persistence.Configurations;
 
 public sealed class AgentConfiguration : IEntityTypeConfiguration<Agent>
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public void Configure(EntityTypeBuilder<Agent> builder)
     {
         builder.HasKey(agent => agent.Id);
@@ -24,23 +21,28 @@ public sealed class AgentConfiguration : IEntityTypeConfiguration<Agent>
         builder.Property(agent => agent.CreatedAt).IsRequired();
         builder.Property(agent => agent.UpdatedAt).IsRequired();
 
-        // Skills — вычисляемая обёртка над полем _skills, самой колонки за ней нет.
-        builder.Ignore(agent => agent.Skills);
+        // Скиллы — связь многие-ко-многим через таблицу agent_skills. Отдельной сущности
+        // под связь нет: кроме двух внешних ключей в ней хранить нечего.
+        //
+        // Каскад с обеих сторон: удалили агента — уходят его связи, но не сами скиллы;
+        // удалили скилл — он пропадает у всех агентов, которым был выдан.
+        builder.HasMany(agent => agent.Skills)
+            .WithMany()
+            .UsingEntity(
+                "agent_skills",
+                right => right.HasOne(typeof(Skill))
+                    .WithMany()
+                    .HasForeignKey("skill_id")
+                    .OnDelete(DeleteBehavior.Cascade),
+                left => left.HasOne(typeof(Agent))
+                    .WithMany()
+                    .HasForeignKey("agent_id")
+                    .OnDelete(DeleteBehavior.Cascade),
+                join => join.HasKey("agent_id", "skill_id"));
 
-        // Список имён скиллов — плоский массив строк, отдельная таблица под него избыточна.
-        // Мапим поле напрямую: снаружи коллекция только для чтения, менять её можно
-        // исключительно через Agent.Update.
-        builder.Property<List<string>>("_skills")
-            .HasColumnName("skills")
-            .HasColumnType("json")
-            .HasConversion(
-                skills => JsonSerializer.Serialize(skills, JsonOptions),
-                json => JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? new List<string>(),
-                new ValueComparer<List<string>>(
-                    (left, right) => left != null && right != null && left.SequenceEqual(right),
-                    skills => skills.Aggregate(0, (hash, skill) => HashCode.Combine(hash, skill.GetHashCode())),
-                    skills => skills.ToList()))
-            .IsRequired();
+        // Коллекция снаружи только для чтения, поэтому EF работает с полем напрямую —
+        // менять набор скиллов можно исключительно через Agent.Update.
+        builder.Navigation(agent => agent.Skills).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasOne<User>()
             .WithMany()

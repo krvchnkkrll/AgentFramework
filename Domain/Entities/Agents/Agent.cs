@@ -1,5 +1,6 @@
 using Domain.Common;
 using Domain.Entities.Agents.Parameters;
+using Domain.Entities.Skills;
 using Domain.Enums;
 
 namespace Domain.Entities.Agents;
@@ -20,7 +21,7 @@ public sealed class Agent : Entity
 
     public const int MaxInstructionsLength = 20_000;
 
-    private readonly List<string> _skills = [];
+    private readonly List<Skill> _skills = [];
 
     public Guid UserId { get; private init; }
     public string Name { get; private set; }
@@ -46,8 +47,11 @@ public sealed class Agent : Entity
     /// </summary>
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    /// <summary>Имена скиллов, доступных агенту. Хранится одной json-колонкой.</summary>
-    public IReadOnlyCollection<string> Skills => _skills.AsReadOnly();
+    /// <summary>
+    /// Скиллы, доступные агенту. Связь многие-ко-многим: один скилл живёт у нескольких
+    /// агентов, копировать его на каждого незачем.
+    /// </summary>
+    public IReadOnlyCollection<Skill> Skills => _skills;
 
     private Agent()
     {
@@ -92,11 +96,10 @@ public sealed class Agent : Entity
         Icon = Trim(parameter.Icon, MaxIconLength);
         Instructions = Trim(parameter.Instructions, MaxInstructionsLength);
 
+        // Скиллы приезжают сюда уже загруженными сущностями: проверить, что они существуют
+        // и принадлежат этому пользователю, домен не может — это работа обработчика команды.
         _skills.Clear();
-        _skills.AddRange(parameter.Skills
-            .Select(skill => skill.Trim())
-            .Where(skill => skill.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase));
+        _skills.AddRange(parameter.Skills.DistinctBy(skill => skill.Id));
 
         var generation = parameter.Generation;
 

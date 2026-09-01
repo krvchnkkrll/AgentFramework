@@ -24,17 +24,6 @@ public sealed class AgentController(ISender sender) : AppController(sender)
         return HandleResult(result);
     }
 
-    /// <summary>Скиллы, из которых можно собирать агента. Читаются из папок со скиллами.</summary>
-    [HttpGet("skills")]
-    [ProducesResponseType<IReadOnlyCollection<SkillResponse>>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> GetSkills(CancellationToken cancellationToken)
-    {
-        var result = await Sender.Send(new GetSkillsQuery(), cancellationToken);
-
-        return HandleResult(result);
-    }
-
     [HttpPost]
     [ProducesResponseType<AgentResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

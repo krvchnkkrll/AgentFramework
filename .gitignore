@@ -480,3 +480,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Локальные данные приложения: файловое хранилище и кэш распакованных скиллов.
+Web/storage/
+Web/temp/

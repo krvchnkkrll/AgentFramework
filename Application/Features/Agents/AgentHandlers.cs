@@ -3,6 +3,7 @@ using Application.Contracts.Features.Agents.Responses;
 using Assistant.Contracts;
 using Domain.Common;
 using Domain.Entities.Agents;
+using Domain.Entities.Skills;
 using MediatR;
 using Persistence.Contracts.Repositories;
 using Persistence.Contracts.Services;
@@ -30,33 +31,10 @@ file sealed class GetAgentsQueryHandler(
     }
 }
 
-/// <summary>
-/// Скиллы, из которых можно выбирать в конструкторе. Список берётся не из БД, а с диска —
-/// скиллы кладут в папку, а не заводят в интерфейсе.
-/// </summary>
-file sealed class GetSkillsQueryHandler(IAssistantAgent assistantAgent)
-    : IRequestHandler<GetSkillsQuery, Result<HashSet<SkillResponse>>>
-{
-    public async Task<Result<HashSet<SkillResponse>>> Handle(
-        GetSkillsQuery request,
-        CancellationToken cancellationToken)
-    {
-        var skills = await assistantAgent.GetAvailableSkillsAsync(cancellationToken);
-
-        return Result.Success<HashSet<SkillResponse>>(
-        [
-            .. skills.Select(skill => new SkillResponse
-            {
-                Name = skill.Name,
-                Description = skill.Description,
-            }),
-        ]);
-    }
-}
-
 file sealed class CreateAgentCommandHandler(
     ICurrentUserService currentUserService,
-    IAgentRepository agentRepository)
+    IAgentRepository agentRepository,
+    ISkillRepository skillRepository)
     : IRequestHandler<CreateAgentCommand, Result<AgentResponse>>
 {
     public async Task<Result<AgentResponse>> Handle(CreateAgentCommand request, CancellationToken cancellationToken)
@@ -68,7 +46,16 @@ file sealed class CreateAgentCommandHandler(
         if (string.IsNullOrWhiteSpace(request.Body.Name))
             return Result.Failure<AgentResponse>(Error.Validation("Agent.NameRequired", "Укажите название агента."));
 
-        var agent = Agent.Create(request.Body.ToParameter(userIdResult.Value));
+        var skillsResult = await SkillSelection.ResolveAsync(
+            skillRepository,
+            userIdResult.Value,
+            request.Body.SkillIds,
+            cancellationToken);
+
+        if (skillsResult.IsFailure)
+            return Result.Failure<AgentResponse>(skillsResult.Error);
+
+        var agent = Agent.Create(request.Body.ToParameter(userIdResult.Value, skillsResult.Value));
 
         await agentRepository.AddAsync(agent, cancellationToken);
         await agentRepository.SaveChangesAsync(cancellationToken);
@@ -80,6 +67,7 @@ file sealed class CreateAgentCommandHandler(
 file sealed class UpdateAgentCommandHandler(
     ICurrentUserService currentUserService,
     IAgentRepository agentRepository,
+    ISkillRepository skillRepository,
     IAssistantAgent assistantAgent)
     : IRequestHandler<UpdateAgentCommand, Result<AgentResponse>>
 {
@@ -97,7 +85,16 @@ file sealed class UpdateAgentCommandHandler(
         if (agent is null || agent.UserId != userIdResult.Value)
             return Result.Failure<AgentResponse>(Error.NotFound("Agent.NotFound", "Агент не найден."));
 
-        agent.Update(request.Body.ToParameter(userIdResult.Value));
+        var skillsResult = await SkillSelection.ResolveAsync(
+            skillRepository,
+            userIdResult.Value,
+            request.Body.SkillIds,
+            cancellationToken);
+
+        if (skillsResult.IsFailure)
+            return Result.Failure<AgentResponse>(skillsResult.Error);
+
+        agent.Update(request.Body.ToParameter(userIdResult.Value, skillsResult.Value));
 
         await agentRepository.SaveChangesAsync(cancellationToken);
 
@@ -135,5 +132,36 @@ file sealed class DeleteAgentCommandHandler(
         assistantAgent.EvictAgent(agent.Id);
 
         return Result.Success();
+    }
+}
+
+/// <summary>
+/// Разбор списка скиллов из формы конструктора.
+///
+/// Идентификаторы приходят от клиента, поэтому проверяются: подставив чужой id, забрать
+/// чужой скилл нельзя — репозиторий отдаёт только доступные, а недостающие превращаются
+/// в ошибку, а не молча пропадают из набора.
+/// </summary>
+file static class SkillSelection
+{
+    public static async Task<Result<IReadOnlyList<Skill>>> ResolveAsync(
+        ISkillRepository skillRepository,
+        Guid userId,
+        IReadOnlyList<Guid> skillIds,
+        CancellationToken cancellationToken)
+    {
+        if (skillIds.Count == 0)
+            return Result.Success<IReadOnlyList<Skill>>([]);
+
+        var requested = skillIds.Distinct().ToArray();
+        var skills = await skillRepository.GetAvailableByIdsAsync(userId, requested, cancellationToken);
+
+        if (skills.Count != requested.Length)
+        {
+            return Result.Failure<IReadOnlyList<Skill>>(
+                Error.NotFound("Agent.SkillNotFound", "Часть выбранных скиллов не найдена."));
+        }
+
+        return Result.Success<IReadOnlyList<Skill>>([.. skills]);
     }
 }

@@ -25,12 +25,6 @@ public interface IAssistantAgent
     Task<string> GenerateTitleAsync(string userText, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Скиллы, доступные для выбора в конструкторе агента. Читаются из папок со скиллами,
-    /// поэтому список меняется без пересборки приложения.
-    /// </summary>
-    Task<IReadOnlyList<AssistantSkillInfo>> GetAvailableSkillsAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Забывает собранного в память агента. Вызывается после правки или удаления агента
     /// в конструкторе: без этого до перезапуска приложения отвечал бы старый промпт.
     /// </summary>

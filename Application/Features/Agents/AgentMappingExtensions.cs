@@ -1,8 +1,10 @@
 using Application.Contracts.Features.Agents;
 using Application.Contracts.Features.Agents.Responses;
+using Application.Features.Skills;
 using Assistant.Contracts.Models;
 using Domain.Entities.Agents;
 using Domain.Entities.Agents.Parameters;
+using Domain.Entities.Skills;
 using Domain.Enums;
 
 namespace Application.Features.Agents;
@@ -16,7 +18,7 @@ internal static class AgentMappingExtensions
         Description = agent.Description,
         Icon = agent.Icon,
         Instructions = agent.Instructions,
-        Skills = agent.Skills,
+        Skills = [.. agent.Skills.OrderBy(skill => skill.Name).Select(skill => skill.ToResponse())],
         Temperature = agent.Temperature,
         TopP = agent.TopP,
         TopK = agent.TopK,
@@ -28,14 +30,21 @@ internal static class AgentMappingExtensions
         UpdatedAt = agent.UpdatedAt,
     };
 
-    public static CreateAgentParameter ToParameter(this SaveAgentRequest request, Guid userId) => new()
+    /// <param name="skills">
+    /// Уже загруженные и проверенные скиллы. Домену их проверять нечем, поэтому право
+    /// на каждый из них подтверждает обработчик команды.
+    /// </param>
+    public static CreateAgentParameter ToParameter(
+        this SaveAgentRequest request,
+        Guid userId,
+        IReadOnlyList<Skill> skills) => new()
     {
         UserId = userId,
         Name = request.Name,
         Description = request.Description,
         Icon = request.Icon,
         Instructions = request.Instructions,
-        Skills = request.Skills,
+        Skills = skills,
         Generation = new AgentGenerationParameter
         {
             Temperature = request.Temperature,
@@ -55,7 +64,7 @@ internal static class AgentMappingExtensions
         Name = agent.Name,
         Description = agent.Description,
         Instructions = agent.Instructions,
-        Skills = [.. agent.Skills],
+        Skills = [.. agent.Skills.Select(skill => skill.ToReference())],
         UpdatedAt = agent.UpdatedAt,
         Temperature = agent.Temperature,
         TopP = agent.TopP,

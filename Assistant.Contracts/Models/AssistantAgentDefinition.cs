@@ -18,10 +18,10 @@ public sealed record AssistantAgentDefinition
     public string? Instructions { get; init; }
 
     /// <summary>
-    /// Имена скиллов, доступных агенту. Пусто — скиллов у агента нет вообще
-    /// (а не «все», как можно было бы подумать: пустой список — это осознанный выбор в конструкторе).
+    /// Скиллы, доступные агенту. Пусто — скиллов у агента нет вообще (а не «все», как можно
+    /// было бы подумать: пустой список — это осознанный выбор в конструкторе).
     /// </summary>
-    public IReadOnlyList<string> Skills { get; init; } = [];
+    public IReadOnlyList<AssistantSkillReference> Skills { get; init; } = [];
 
     /// <summary>
     /// Отметка последнего изменения. По ней ассистент понимает, что собранный в память агент
@@ -59,10 +59,28 @@ public enum AssistantReasoningEffortEnum
     High,
 }
 
-/// <summary>Скилл, доступный для выбора в конструкторе агента.</summary>
-public sealed record AssistantSkillInfo
+/// <summary>
+/// Ссылка на скилл, который надо дать агенту.
+///
+/// Содержимого здесь нет — только чем его найти: архив лежит в файловом хранилище, и слой
+/// ассистента разворачивает его в кэш сам, когда собирает агента.
+/// </summary>
+public sealed record AssistantSkillReference
 {
+    public required Guid Id { get; init; }
+
+    /// <summary>
+    /// Имя из frontmatter. Провайдер скиллов отбирает файлы именно по нему, поэтому оно
+    /// обязано совпадать с тем, что лежит внутри SKILL.md.
+    /// </summary>
     public required string Name { get; init; }
 
-    public required string Description { get; init; }
+    /// <summary>Ключ архива в файловом хранилище.</summary>
+    public required Guid FileId { get; init; }
+
+    /// <summary>
+    /// SHA-256 архива. Входит в путь распаковки, поэтому новая версия скилла разворачивается
+    /// в новую папку, а старая остаётся жить, пока её кто-то использует.
+    /// </summary>
+    public required string ContentHash { get; init; }
 }
