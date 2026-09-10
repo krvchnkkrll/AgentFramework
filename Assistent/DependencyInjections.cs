@@ -4,18 +4,13 @@ using System.Text;
 using Assistant.Agents;
 using Assistant.Contracts;
 using Assistant.Contracts.Documents;
-using Assistant.Contracts.Skills;
-using Assistant.Contracts.Workflows;
 using Assistant.Documents;
 using Assistant.Options;
 using Assistant.Search;
-using Assistant.Skills;
-using Assistant.Workflows;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAI;
 
@@ -49,27 +44,14 @@ public static class DependencyInjections
 
         builder.AddOpenSearch();
 
-        builder.Services.AddSingleton<ProcessSkillScriptRunner>();
-
-        // Кэш развёрнутых скиллов. ISkillPackageSource регистрирует приложение — без него
-        // воркспейс просто ничего не разворачивает, и агенты работают на локальных папках.
-        builder.Services.AddSingleton(sp => new SkillWorkspace(
-            sp.GetRequiredService<IOptions<AssistantOptions>>().Value,
-            sp.GetService<ISkillPackageSource>(),
-            sp.GetRequiredService<ILoggerFactory>()));
-
-        builder.Services.AddHostedService<SkillWorkspaceCleaner>();
+        // IFileService, из которого качаются тексты скиллов, регистрирует проект FileService
+        // (AddFileService). Без него агенты просто работают без скиллов.
 
         // Документы живут в памяти процесса — это временно, под эксперимент.
         builder.Services.AddSingleton<InMemoryDocumentStore>();
         builder.Services.AddSingleton<IDocumentStore>(sp => sp.GetRequiredService<InMemoryDocumentStore>());
         builder.Services.AddSingleton<DefaultAgent>();
         builder.Services.AddSingleton<IAssistantAgent>(sp => sp.GetRequiredService<DefaultAgent>());
-
-        // Стенд для замера мультиагентного сценария. К обычному чату отношения не имеет:
-        // собственные агенты, собственные инструменты-заглушки, отдельная точка входа.
-        builder.Services.AddSingleton<CorporateApi>();
-        builder.Services.AddSingleton<IDocumentWorkflow, DocumentWorkflow>();
 
         return builder;
     }

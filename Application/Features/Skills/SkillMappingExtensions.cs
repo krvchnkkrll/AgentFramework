@@ -19,13 +19,14 @@ internal static class SkillMappingExtensions
     };
 
     /// <summary>
-    /// Переводит скилл в ссылку для слоя ассистента: имя для отбора и координаты архива,
-    /// чтобы тот развернул его в кэш.
+    /// Переводит скилл в ссылку для слоя ассистента: имя и описание для системного промпта
+    /// и идентификатор файла, по которому ассистент скачает текст, когда модель его запросит.
     /// </summary>
     public static AssistantSkillReference ToReference(this Skill skill) => new()
     {
         Id = skill.Id,
         Name = skill.Name,
+        Description = skill.Description,
         FileId = skill.FileId,
         ContentHash = skill.ContentHash,
     };

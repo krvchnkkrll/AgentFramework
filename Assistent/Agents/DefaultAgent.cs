@@ -6,7 +6,7 @@ using Assistant.Documents;
 using Assistant.Options;
 using Assistant.Prompts;
 using Assistant.Search;
-using Assistant.Skills;
+using FileService.Contracts;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -39,20 +39,18 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
         IChatClient chatClient,
         IOptions<AssistantOptions> options,
         ILoggerFactory loggerFactory,
-        SkillWorkspace skillWorkspace,
         OpenSearchTextSearchClient? searchClient = null,
-        ProcessSkillScriptRunner? scriptRunner = null,
+        IFileService? fileService = null,
         InMemoryDocumentStore? documentStore = null)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(loggerFactory);
-        ArgumentNullException.ThrowIfNull(skillWorkspace);
 
         _options = options.Value;
         _logger = loggerFactory.CreateLogger<DefaultAgent>();
         _factory = new AgentRuntimeFactory(
-            chatClient, options, loggerFactory, skillWorkspace, searchClient, scriptRunner, documentStore);
+            chatClient, options, loggerFactory, searchClient, fileService, documentStore);
 
         _titleAgent = new ChatClientAgent(
             chatClient,
@@ -78,10 +76,10 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
     /// Голый <see cref="AIAgent"/> встроенного агента — на случай, если понадобится что-то,
     /// чего нет в обёртке (обернуть в LoopAgent, воткнуть в воркфлоу).
     /// </summary>
-    public AIAgent Agent => _factory.GetBuiltIn().Agent;
+    public AIAgent Agent => _factory.Get(null).Agent;
 
     /// <summary>Имена собственных инструментов агента. Инструменты провайдеров сюда не входят.</summary>
-    public IReadOnlyList<string> ToolNames => _factory.GetBuiltIn().ToolNames;
+    public IReadOnlyList<string> ToolNames => _factory.Get(null).ToolNames;
 
     /// <summary>Выбрасывает агента из кэша — вызывается, когда его удалили или переписали.</summary>
     public void EvictAgent(Guid agentId) => _factory.Evict(agentId);
@@ -194,7 +192,7 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.UserText);
 
-        var runtime = await _factory.GetAsync(request.Agent, cancellationToken);
+        var runtime = _factory.Get(request.Agent);
         var agent = runtime.Agent;
         var session = await CreateSessionAsync(agent, request, cancellationToken);
 
@@ -257,7 +255,7 @@ public sealed class DefaultAgent : IAssistantAgent, IDisposable
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.UserText);
 
-        var runtime = await _factory.GetAsync(request.Agent, cancellationToken);
+        var runtime = _factory.Get(request.Agent);
         var agent = runtime.Agent;
         var session = await CreateSessionAsync(agent, request, cancellationToken);
         var response = await agent.RunAsync(request.UserText, session, options: null, cancellationToken);

@@ -1,6 +1,5 @@
 using Application.Contracts.Services;
 using Application.Services;
-using Assistant.Contracts.Skills;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -15,10 +14,6 @@ public static class DependencyInjection
 
         builder.Services.AddSingleton<IGenerationRegistryService, GenerationRegistryService>();
 
-        // Мост между ассистентом и файловым хранилищем: ассистенту нужен архив скилла,
-        // а где он лежит — знает приложение.
-        builder.Services.AddSingleton<ISkillPackageSource, SkillPackageSource>();
-        
         return builder;
     }
 }

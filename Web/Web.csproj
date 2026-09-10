@@ -11,13 +11,9 @@
     <PackageReference Include="Microsoft.OpenApi" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Скиллы агента ищутся относительно рабочей директории: при dotnet run это папка проекта,
-         при публикации — папка вывода, поэтому копируем их рядом с бинарником. -->
-    <Content Include="skills\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\Application\Application.csproj" />
     <ProjectReference Include="..\Assistent\Assistent.csproj" />
+    <ProjectReference Include="..\FileService\FileService.csproj" />
     <ProjectReference Include="..\Persistence\Persistence.csproj" />
     <ProjectReference Include="..\Sso\Sso.csproj" />
   </ItemGroup>

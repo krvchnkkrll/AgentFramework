@@ -4,6 +4,7 @@ using Assistant.Documents;
 using Assistant.Options;
 using Assistant.Search;
 using Assistant.Skills;
+using FileService.Contracts;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Compaction;
 using Microsoft.Extensions.AI;
@@ -27,26 +28,45 @@ internal sealed record AgentProviderSet
 /// сообщения и инструменты. После прогона ему отдают запрос, ответ и исключение — так провайдеры
 /// ведут своё состояние. Всё интересное во фреймворке (компакция, скиллы, todo, файлы, память,
 /// RAG) реализовано именно так.
+///
+/// Сама сборка синхронная: здесь провайдеры только создаются, ни в сеть, ни в базу никто не
+/// ходит. Асинхронная работа происходит позже, внутри провайдеров, во время прогона, — например,
+/// текст скилла качается из файлового сервиса, когда модель вызывает load_skill.
 /// </summary>
 internal static class AgentContextProviderFactory
 {
+    /// <summary>
+    /// Системный промпт провайдера скиллов. Свой, а не встроенный: встроенный на английском
+    /// и рассказывает модели про скрипты, которых у нас нет. Вместо {skills} фреймворк
+    /// подставит список «имя — описание».
+    /// </summary>
+    private const string SkillsPrompt =
+        """
+        У тебя есть скиллы — готовые инструкции для отдельных видов задач. Пока ты видишь только их имена и описания:
+
+        {skills}
+
+        Как работать со скиллами:
+        - Если задача подходит под описание скилла, сначала вызови load_skill с его именем, а потом делай задачу по полученной инструкции.
+        - В тексте скилла могут быть ссылки на другие скиллы из этого списка. Если такой скилл нужен для задачи, загрузи его тем же load_skill по имени.
+        - Загружай только то, что нужно для текущей задачи. Не выдумывай содержимое скилла, пока не загрузил его.
+        """;
+
     /// <param name="definition">
     /// Агент из конструктора или null для встроенного. От него зависит только набор скиллов:
     /// у встроенного их нет вообще, у своего — ровно отмеченные в конструкторе. Остальные
     /// провайдеры общие для всех агентов и настраиваются в appsettings.
     /// </param>
-    /// <param name="skillDirectories">
-    /// Папки со скиллами агента, уже развёрнутые из хранилища в кэш. Разворачивает их
-    /// <see cref="Skills.SkillWorkspace"/> до сборки агента: провайдер скиллов умеет читать
-    /// только с диска, а операция асинхронная, тогда как сборка агента — нет.
+    /// <param name="fileService">
+    /// Откуда качать тексты скиллов. null — файловый сервис не подключён, и агенты работают
+    /// без скиллов.
     /// </param>
     public static AgentProviderSet Create(
         AssistantOptions options,
         AssistantAgentDefinition? definition,
-        IReadOnlyList<string> skillDirectories,
         IChatClient chatClient,
         OpenSearchTextSearchClient? searchClient,
-        ProcessSkillScriptRunner? scriptRunner,
+        IFileService? fileService,
         InMemoryDocumentStore? documentStore,
         ILoggerFactory loggerFactory)
     {
@@ -62,7 +82,7 @@ internal static class AgentContextProviderFactory
         }
 
         AddCompaction(options, chatClient, loggerFactory, providers, descriptions);
-        AddSkills(options, definition, skillDirectories, scriptRunner, loggerFactory, providers, descriptions);
+        AddSkills(options, definition, fileService, loggerFactory, providers, descriptions);
         AddTodo(options, providers, descriptions);
         AddModes(options, providers, descriptions);
         AddFiles(options, providers, descriptions);
@@ -96,23 +116,21 @@ internal static class AgentContextProviderFactory
     }
 
     /// <summary>
-    /// Скиллы. В системный промпт уезжает только список «имя — описание», тело скилла модель
-    /// подтягивает инструментом load_skill.
+    /// Скиллы. Провайдер встроенный (<see cref="AgentSkillsProvider"/>), а скиллы свои —
+    /// <see cref="FileServiceSkill"/>: имя и описание из базы, текст из файлового сервиса.
     ///
-    /// Папок здесь две группы: развёрнутые из хранилища скиллы этого агента и локальные из
-    /// конфигурации — те, что кладут на сервер руками. Вторые нужны встроенному агенту,
-    /// который в базе не заведён и своих скиллов иметь не может.
+    /// В системный промпт уезжает только список «имя — описание», текст модель подтягивает
+    /// инструментом load_skill, когда решит, что скилл ей нужен.
     /// </summary>
     private static void AddSkills(
         AssistantOptions options,
         AssistantAgentDefinition? definition,
-        IReadOnlyList<string> skillDirectories,
-        ProcessSkillScriptRunner? scriptRunner,
+        IFileService? fileService,
         ILoggerFactory loggerFactory,
         List<AIContextProvider> providers,
         List<string> descriptions)
     {
-        if (!options.Skills.Enabled)
+        if (!options.Skills.Enabled || fileService is null)
             return;
 
         // Скиллы есть только у агентов из конструктора и только те, что там отмечены.
@@ -121,72 +139,43 @@ internal static class AgentContextProviderFactory
         // и ничего специфического уметь не должен — за специализацию отвечают агенты, которые
         // пользователь собирает сам. Пустой список у своего агента — то же самое: осознанный
         // выбор не давать ему скиллов.
-        var allowed = new HashSet<string>(
-            definition?.Skills.Select(skill => skill.Name) ?? [],
-            StringComparer.OrdinalIgnoreCase);
-
-        if (allowed.Count == 0)
+        if (definition is null || definition.Skills.Count == 0)
             return;
 
-        string[] directories = [.. skillDirectories.Concat(ResolveLocalSkillDirectories(options)).Distinct()];
+        var logger = loggerFactory.CreateLogger<FileServiceSkill>();
 
-        if (directories.Length == 0)
+        FileServiceSkill[] skills =
+        [
+            .. definition.Skills
+                .Select(skill => FileServiceSkill.TryCreate(skill, fileService, logger))
+                .OfType<FileServiceSkill>(),
+        ];
+
+        if (skills.Length == 0)
             return;
 
-        // Скрипты в скиллах, которые загрузил пользователь, — это выполнение произвольного кода
-        // на сервере, поэтому им нужно отдельное разрешение поверх общего.
-        var allowScripts = options.Skills.AllowScripts && options.Skills.AllowUserScripts;
-
-        var builder = new AgentSkillsProviderBuilder()
-            .UseFileSkills(directories, CreateFileOptions(options, allowScripts))
+        var provider = new AgentSkillsProviderBuilder()
+            .UseSkills(skills)
+            .UsePromptTemplate(SkillsPrompt)
             .UseLoggerFactory(loggerFactory)
             .UseOptions(skillOptions =>
             {
-                // Подтверждения на чтение скиллов не нужны: это просто markdown из нашей же папки.
+                // Подтверждения не нужны: скилл — это просто текст, который модель читает.
                 skillOptions.DisableLoadSkillApproval = true;
                 skillOptions.DisableReadSkillResourceApproval = true;
-                skillOptions.DisableRunSkillScriptApproval = !options.Approvals.Enabled;
-            });
 
-        // Раннер отдаём всегда: билдер требует его безусловно, даже когда ни один скилл
-        // скриптов не содержит. При выключенных скриптах подставляем заглушку — до неё всё
-        // равно не дойдёт, потому что скрипты в этом режиме просто не обнаруживаются.
-        builder = builder.UseFileScriptRunner(allowScripts && scriptRunner is not null
-            ? scriptRunner.AsRunner()
-            : ProcessSkillScriptRunner.Disabled);
+                // read_skill_resource и run_skill_script провайдер выдаёт модели всегда, отключить
+                // их нельзя. Ресурсов и скриптов у наших скиллов нет, так что вызов просто вернёт
+                // «не найдено». Без этого флага он бы ещё и остановил агента в ожидании
+                // подтверждения от пользователя.
+                skillOptions.DisableRunSkillScriptApproval = true;
+            })
+            .Build();
 
-        builder = builder.UseFilter((skill, _) => allowed.Contains(skill.Frontmatter.Name));
+        providers.Add(provider);
 
-        providers.Add(builder.Build());
-
-        descriptions.Add($"скиллы: {string.Join(", ", allowed)}");
+        descriptions.Add($"скиллы: {string.Join(", ", skills.Select(skill => skill.Frontmatter.Name))}");
     }
-
-    /// <summary>
-    /// Папки со скиллами из конфигурации — те, что лежат на сервере рядом с приложением.
-    /// Несуществующие молча пропускаем: приложение не должно падать из-за отсутствующей папки.
-    /// </summary>
-    internal static string[] ResolveLocalSkillDirectories(AssistantOptions options) =>
-        [
-            .. options.Skills.Directories
-                .Select(Path.GetFullPath)
-                .Where(Directory.Exists),
-        ];
-
-    internal static AgentFileSkillsSourceOptions CreateFileOptions(AssistantOptions options, bool allowScripts) => new()
-    {
-        SearchDepth = options.Skills.SearchDepth,
-        AllowedScriptExtensions = options.Skills.ScriptExtensions.Count > 0
-            ? options.Skills.ScriptExtensions
-            : null,
-
-        // Скрипты выключены — не обнаруживаем их вовсе, чтобы ни один скилл не мог ничего
-        // запустить. Сам инструмент run_skill_script модели всё равно предлагается: провайдер
-        // регистрирует свои три инструмента независимо от того, есть ли у скиллов скрипты.
-        // Вреда нет — запускать нечего, а раннер подменён заглушкой; но одно лишнее описание
-        // в промпте это стоит.
-        ScriptFilter = allowScripts ? null : _ => false,
-    };
 
     /// <summary>Todo-лист: модель сама разбивает длинную задачу на пункты и закрывает их по ходу.</summary>
     private static void AddTodo(

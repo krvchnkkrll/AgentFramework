@@ -1,5 +1,6 @@
 using Application;
 using Assistant;
+using FileService;
 using Persistence;
 using Sso;
 using Web;
@@ -12,6 +13,7 @@ builder.AddWeb()
     .AddSso()
     .AddApplication()
     .AddPersistence()
+    .AddFileService()
     .AddAssistant();
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
